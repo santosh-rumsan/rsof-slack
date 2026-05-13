@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: rsof
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rsof_password}
+      POSTGRES_DB: rsof_slack
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rsof -d rsof_slack"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://rsof:${POSTGRES_PASSWORD:-rsof_password}@postgres:5432/rsof_slack
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
