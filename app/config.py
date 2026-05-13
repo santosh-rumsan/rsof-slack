@@ -8,7 +8,6 @@ class Settings(BaseSettings):
 
     # Slack
     slack_bot_token: str
-    slack_app_token: str
 
     # PostgreSQL
     database_url: str  # postgresql+asyncpg://...
