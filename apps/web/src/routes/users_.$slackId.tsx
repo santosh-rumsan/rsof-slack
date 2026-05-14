@@ -26,9 +26,16 @@ function localToUtcMs(dateStr: string, hour: number, tz: string): number {
   const m = Math.round((hour - h) * 60);
   const timeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
   try {
-    const fakeUtc = new Date(`${dateStr}T${timeStr}Z`);
-    const tzDate = new Date(fakeUtc.toLocaleString("en-US", { timeZone: tz }));
-    return fakeUtc.getTime() + (fakeUtc.getTime() - tzDate.getTime());
+    const approx = new Date(`${dateStr}T${timeStr}Z`);
+    const tzName = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "longOffset",
+    }).formatToParts(approx).find((p) => p.type === "timeZoneName")?.value ?? "";
+    const match = tzName.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+    if (!match) return approx.getTime();
+    const sign = match[1] === "+" ? 1 : -1;
+    const offsetMs = sign * (parseInt(match[2]) * 60 + parseInt(match[3] ?? "0")) * 60000;
+    return approx.getTime() - offsetMs;
   } catch {
     return new Date(`${dateStr}T${timeStr}`).getTime();
   }
@@ -136,6 +143,29 @@ function buildDaySegments(
   return segments;
 }
 
+function getShortTzAbbr(timezone: string): string {
+  try {
+    return (
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone, timeZoneName: "short" })
+        .formatToParts(new Date())
+        .find((p) => p.type === "timeZoneName")?.value ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
+
+function UserLocalClock({ timezone }: { timezone: string }) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <>{now.toLocaleTimeString(undefined, { timeZone: timezone, hour: "2-digit", minute: "2-digit" })}</>
+  );
+}
+
 function fmtDecimalHour(h: number): string {
   const hours = Math.floor(h);
   const minutes = Math.round((h - hours) * 60);
@@ -222,11 +252,13 @@ function TimelineBar({
   hours,
   workStart,
   workEnd,
+  timezone,
 }: {
   segments: Segment[];
   hours: number[];
   workStart: number;
   workEnd: number;
+  timezone?: string | null;
 }) {
   const [hoverPct, setHoverPct] = useState<number | null>(null);
   const [clickTooltip, setClickTooltip] = useState<{ pct: number; text: string } | null>(null);
@@ -235,7 +267,9 @@ function TimelineBar({
     const absMin = Math.round(workStart * 60) + Math.round((pct / 100) * (workEnd - workStart) * 60);
     const h = Math.floor(absMin / 60);
     const m = absMin % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    const time = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    const abbr = timezone ? getShortTzAbbr(timezone) : "";
+    return abbr ? `${time} ${abbr}` : time;
   }
 
   function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
@@ -341,6 +375,11 @@ function Timeline({
         <div className="flex items-center gap-2">
           <h3 className="font-medium text-gray-700">Daily Timeline</h3>
           <span className="text-xs text-gray-400">{weekLabel}</span>
+          {timezone && (
+            <span className="text-xs text-gray-400 bg-gray-50 border rounded px-1.5 py-0.5">
+              {getShortTzAbbr(timezone)}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400">{fmtDecimalHour(workStart)} – {fmtDecimalHour(workEnd)}</span>
@@ -380,7 +419,7 @@ function Timeline({
           return (
             <div key={di} className="flex items-center gap-3">
               <DayLabel date={date} />
-              <TimelineBar segments={segments} hours={hours} workStart={workStart} workEnd={workEnd} />
+              <TimelineBar segments={segments} hours={hours} workStart={workStart} workEnd={workEnd} timezone={timezone} />
               <div className="flex gap-2 flex-shrink-0 w-[120px] sm:w-[180px]">
                 <span className="text-xs text-green-600 w-14 text-right font-mono">
                   {activeSec > 0 ? fmtDuration(activeSec) : "—"}
@@ -522,7 +561,11 @@ function UserDetailPage() {
               <PresenceBadge presence={livePresence} showLabel />
             </div>
             {user.email && <p className="text-sm text-gray-400">{user.email}</p>}
-            {user.timezone && <p className="text-xs text-gray-400 mt-0.5">{user.timezone}</p>}
+            {user.timezone && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                {user.timezone} · <UserLocalClock timezone={user.timezone} />
+              </p>
+            )}
             {user.current_status_text && (
               <p className="text-sm text-gray-600 mt-1">
                 {user.current_status_emoji ? <SlackText text={user.current_status_emoji} /> : null}{" "}
@@ -561,7 +604,13 @@ function UserDetailPage() {
             <table className="w-full text-sm min-w-[400px]">
               <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                 <tr>
-                  <th className="px-4 py-2 text-left">Time</th>
+                  <th className="px-4 py-2 text-left">
+                  Time{user.timezone && (
+                    <span className="text-gray-300 normal-case font-normal ml-1">
+                      ({getShortTzAbbr(user.timezone)})
+                    </span>
+                  )}
+                </th>
                   <th className="px-4 py-2 text-left">Presence</th>
                   <th className="px-4 py-2 text-left">Status at event</th>
                   <th className="px-4 py-2 text-left">Source</th>
@@ -576,7 +625,14 @@ function UserDetailPage() {
                     return (
                       <tr key={h.id}>
                         <td className="px-4 py-2 text-gray-500">
-                          {new Date(h.recorded_at).toLocaleString()}
+                          {new Date(h.recorded_at).toLocaleString(undefined, {
+                            ...(user.timezone ? { timeZone: user.timezone } : {}),
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                            second: "2-digit",
+                          })}
                         </td>
                         <td className="px-4 py-2">
                           <PresenceBadge presence={h.presence as "active" | "away"} showLabel />

@@ -22,9 +22,16 @@ function localToUtcMs(dateStr: string, hour: number, tz: string): number {
   const m = Math.round((hour - h) * 60);
   const timeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
   try {
-    const fakeUtc = new Date(`${dateStr}T${timeStr}Z`);
-    const tzDate = new Date(fakeUtc.toLocaleString("en-US", { timeZone: tz }));
-    return fakeUtc.getTime() + (fakeUtc.getTime() - tzDate.getTime());
+    const approx = new Date(`${dateStr}T${timeStr}Z`);
+    const tzName = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      timeZoneName: "longOffset",
+    }).formatToParts(approx).find((p) => p.type === "timeZoneName")?.value ?? "";
+    const match = tzName.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+    if (!match) return approx.getTime();
+    const sign = match[1] === "+" ? 1 : -1;
+    const offsetMs = sign * (parseInt(match[2]) * 60 + parseInt(match[3] ?? "0")) * 60000;
+    return approx.getTime() - offsetMs;
   } catch {
     return new Date(`${dateStr}T${timeStr}`).getTime();
   }
@@ -128,10 +135,92 @@ function fmtDuration(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)}h`;
 }
 
+function getShortTzAbbr(timezone: string): string {
+  try {
+    return (
+      new Intl.DateTimeFormat("en-US", { timeZone: timezone, timeZoneName: "short" })
+        .formatToParts(new Date())
+        .find((p) => p.type === "timeZoneName")?.value ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
+
 function segmentColor(presence: "active" | "away" | "unknown") {
   if (presence === "active") return "bg-green-400";
   if (presence === "away") return "bg-gray-200";
   return "bg-gray-100";
+}
+
+function UserPresenceBar({
+  segments,
+  workStart,
+  workEnd,
+  timezone,
+  hours,
+}: {
+  segments: Segment[];
+  workStart: number;
+  workEnd: number;
+  timezone?: string | null;
+  hours: number[];
+}) {
+  const [hoverPct, setHoverPct] = useState<number | null>(null);
+
+  function pctToTime(pct: number): string {
+    const absMin = Math.round(workStart * 60) + Math.round((pct / 100) * (workEnd - workStart) * 60);
+    const h = Math.floor(absMin / 60);
+    const m = absMin % 60;
+    const time = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    const abbr = timezone ? getShortTzAbbr(timezone) : "";
+    return abbr ? `${time} ${abbr}` : time;
+  }
+
+  return (
+    <div className="relative flex-1 h-6">
+      <div
+        className="absolute inset-0 bg-gray-100 rounded overflow-hidden cursor-crosshair"
+        onMouseMove={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          setHoverPct(Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100)));
+        }}
+        onMouseLeave={() => setHoverPct(null)}
+      >
+        {hours.slice(1, -1).map((h) => (
+          <div
+            key={h}
+            className="absolute top-0 bottom-0 w-px bg-white/60"
+            style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
+          />
+        ))}
+        {segments.map((seg, si) => (
+          <div
+            key={si}
+            className={`absolute top-0 bottom-0 ${segmentColor(seg.presence)}`}
+            style={{ left: `${seg.startPct}%`, width: `${seg.widthPct}%` }}
+            title={seg.presence}
+          />
+        ))}
+        {hoverPct !== null && (
+          <div
+            className="absolute top-0 bottom-0 w-px bg-gray-600 pointer-events-none z-10"
+            style={{ left: `${hoverPct}%` }}
+          />
+        )}
+      </div>
+      {hoverPct !== null && (
+        <div
+          className="absolute pointer-events-none z-20"
+          style={{ left: `${hoverPct}%`, bottom: "calc(100% + 2px)", transform: "translateX(-50%)" }}
+        >
+          <span className="text-[10px] bg-gray-800 text-white px-1.5 py-0.5 rounded whitespace-nowrap">
+            {pctToTime(hoverPct)}
+          </span>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function PresenceOverviewPage() {
@@ -175,11 +264,10 @@ function PresenceOverviewPage() {
       const allUsers = await admin.listUsers();
       setUsers(allUsers);
 
-      const y = date.getFullYear();
-      const mo = date.getMonth();
-      const d = date.getDate();
-      const from = new Date(y, mo, d, 0, 0, 0, 0).toISOString();
-      const to = new Date(y, mo, d + 1, 0, 0, 0, 0).toISOString();
+      // UTC midnight of selected date ±14h covers all timezones (UTC-12 to UTC+14)
+      const dayMs = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+      const from = new Date(dayMs - 14 * 3600000).toISOString();
+      const to = new Date(dayMs + 38 * 3600000).toISOString();
 
       const histories = await Promise.all(
         allUsers.map((u) => admin.getUserPresenceHistory(u.slack_id, from, to).catch(() => [])),
@@ -298,24 +386,13 @@ function PresenceOverviewPage() {
                     {isToday && <PresenceBadge presence={livePresence} />}
                   </Link>
 
-                  <div className="relative flex-1 h-6 bg-gray-100 rounded overflow-hidden">
-                    {/* Hour grid lines */}
-                    {hours.slice(1, -1).map((h) => (
-                      <div
-                        key={h}
-                        className="absolute top-0 bottom-0 w-px bg-white/60"
-                        style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
-                      />
-                    ))}
-                    {segments.map((seg, si) => (
-                      <div
-                        key={si}
-                        className={`absolute top-0 bottom-0 ${segmentColor(seg.presence)}`}
-                        style={{ left: `${seg.startPct}%`, width: `${seg.widthPct}%` }}
-                        title={seg.presence}
-                      />
-                    ))}
-                  </div>
+                  <UserPresenceBar
+                    segments={segments}
+                    workStart={workStart}
+                    workEnd={workEnd}
+                    timezone={user.timezone}
+                    hours={hours}
+                  />
 
                   <div className="flex gap-2 flex-shrink-0 w-[180px]">
                     <span className="text-xs text-green-600 w-14 text-right font-mono">
