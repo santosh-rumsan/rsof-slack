@@ -127,6 +127,9 @@ export interface InactiveUserRow {
 
 export interface JobStatus {
   job_id: string;
+  description: string;
+  interval_label: string;
+  interval_ms: number;
   last_run: string | null;
   next_run: string | null;
 }
@@ -153,6 +156,9 @@ export const admin = {
   syncUserMappings: () => request<{ message: string }>("/admin/sync/user-mappings", { method: "POST" }),
   syncPresence: () => request<{ message: string }>("/admin/sync/presence", { method: "POST" }),
   syncStatus: () => request<SyncStatus>("/admin/sync/status"),
+
+  syncStreamUrl: (type: "slack-users" | "user-mappings" | "presence") =>
+    `/api/v1/admin/sync/${type}/stream`,
 
   listUsers: (params?: { ids?: string; presence?: string; active_only?: boolean }) => {
     const qs = new URLSearchParams();

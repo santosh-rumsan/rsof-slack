@@ -21,15 +21,17 @@ export class SlackSyncService {
     this.webClient = new WebClient(this.config.get('SLACK_BOT_TOKEN'));
   }
 
-  async syncSlackUsers(): Promise<Record<string, number>> {
+  async syncSlackUsers(log?: (msg: string) => void): Promise<Record<string, number>> {
+    const emit = log ?? (() => {});
     const allUsers: any[] = [];
     let cursor: string | undefined;
 
+    emit('Fetching users from Slack API...');
     do {
       const resp: any = await this.webClient.users.list({ limit: 200, cursor });
       allUsers.push(...(resp.members || []));
       cursor = resp.response_metadata?.next_cursor || undefined;
-      if (cursor) await sleep(500);
+      if (cursor) { emit(`Fetched ${allUsers.length} users so far, loading next page...`); await sleep(500); }
     } while (cursor);
 
     const realUsers = allUsers.filter(
@@ -42,6 +44,7 @@ export class SlackSyncService {
     });
     const existingMap = new Map(existing.map((u) => [u.slackId, u.isActive]));
 
+    emit(`Found ${realUsers.length} real users. Upserting to database...`);
     const newIds: string[] = [];
     let upserted = 0;
 
@@ -90,16 +93,19 @@ export class SlackSyncService {
     }
 
     const stats = { upserted, deactivated, new: newIds.length };
+    emit(`Done: ${upserted} upserted, ${deactivated} deactivated, ${newIds.length} new.`);
     this.logger.log(`User sync complete: ${JSON.stringify(stats)}`);
     return stats;
   }
 
-  async reconcilePresence(): Promise<Record<string, number>> {
+  async reconcilePresence(log?: (msg: string) => void): Promise<Record<string, number>> {
+    const emit = log ?? (() => {});
     const users = await this.prisma.slackUser.findMany({
       where: { isActive: true },
       select: { slackId: true, currentPresence: true },
     });
 
+    emit(`Reconciling presence for ${users.length} active users...`);
     let updated = 0;
 
     for (const user of users) {
@@ -121,6 +127,7 @@ export class SlackSyncService {
                 data: { slackId: user.slackId, presence, source: 'poll' },
               }),
             ]);
+            emit(`Updated: ${fullUser.displayName || fullUser.realName || user.slackId} → ${presence}`);
             updated++;
           }
         }
@@ -131,6 +138,7 @@ export class SlackSyncService {
       await sleep(100);
     }
 
+    emit(`Done: ${updated} updated of ${users.length} checked.`);
     this.logger.log(`Presence reconciliation: ${updated} updated of ${users.length}`);
     return { checked: users.length, updated };
   }

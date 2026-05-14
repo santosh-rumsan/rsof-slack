@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
-import { admin, health, type SlackUser, type Health } from "@/lib/api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { admin, health, type SlackUser, type Health, getJwt } from "@/lib/api";
 import { PresenceBadge } from "@/components/presence-badge";
 import { usePresence } from "@/lib/presence-context";
 
@@ -8,11 +8,115 @@ export const Route = createFileRoute("/")({
   component: Dashboard,
 });
 
+type SyncType = "slack-users" | "user-mappings" | "presence";
+
+function SyncLogModal({
+  type,
+  onClose,
+}: {
+  type: SyncType;
+  onClose: () => void;
+}) {
+  const [lines, setLines] = useState<string[]>([]);
+  const [done, setDone] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    const url = admin.syncStreamUrl(type);
+
+    async function stream() {
+      try {
+        const res = await fetch(url, {
+          headers: { Authorization: `Bearer ${getJwt()}` },
+        });
+        if (!res.ok || !active) return;
+        const reader = res.body!.getReader();
+        const dec = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { value, done: d } = await reader.read();
+          if (d || !active) break;
+          buf += dec.decode(value, { stream: true });
+          const parts = buf.split("\n");
+          buf = parts.pop()!;
+          for (const part of parts) {
+            if (!part.startsWith("data: ")) continue;
+            try {
+              const { log } = JSON.parse(part.slice(6)) as { log: string };
+              if (active) setLines((prev) => [...prev, log]);
+            } catch {
+              // ignore
+            }
+          }
+        }
+      } catch (e: any) {
+        if (active) setLines((prev) => [...prev, `Connection error: ${e.message}`]);
+      } finally {
+        if (active) setDone(true);
+      }
+    }
+
+    stream();
+    return () => { active = false; };
+  }, [type]);
+
+  // Auto-scroll to bottom
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [lines]);
+
+  const labels: Record<SyncType, string> = {
+    "slack-users": "Sync Slack Users",
+    "user-mappings": "Sync User Mappings",
+    "presence": "Reconcile Presence",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl mx-4 flex flex-col" style={{ maxHeight: "80vh" }}>
+        <div className="flex items-center justify-between px-4 py-3 border-b">
+          <h2 className="font-medium text-gray-800">{labels[type]}</h2>
+          <div className="flex items-center gap-2">
+            {!done && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">
+                running…
+              </span>
+            )}
+            {done && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">
+                complete
+              </span>
+            )}
+            <button
+              onClick={onClose}
+              disabled={!done}
+              className="text-sm text-gray-500 hover:text-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto p-4 font-mono text-xs text-gray-700 bg-gray-950 text-green-400 rounded-b-xl space-y-0.5">
+          {lines.length === 0 && !done && (
+            <p className="text-gray-500">Starting…</p>
+          )}
+          {lines.map((line, i) => (
+            <p key={i} className={line.startsWith("ERROR") ? "text-red-400" : line.startsWith("DONE") ? "text-cyan-300 font-bold" : "text-green-400"}>
+              {line}
+            </p>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard() {
   const [healthData, setHealthData] = useState<Health | null>(null);
   const [allUsers, setAllUsers] = useState<SlackUser[]>([]);
-  const [syncing, setSyncing] = useState<string | null>(null);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+  const [activeSync, setActiveSync] = useState<SyncType | null>(null);
   const { presenceMap } = usePresence();
 
   useEffect(() => {
@@ -35,23 +139,6 @@ function Dashboard() {
     [allUsers, presenceMap],
   );
 
-  async function triggerSync(type: "slack-users" | "user-mappings" | "presence") {
-    setSyncing(type);
-    setSyncMsg(null);
-    try {
-      let result;
-      if (type === "slack-users") result = await admin.syncSlackUsers();
-      else if (type === "user-mappings") result = await admin.syncUserMappings();
-      else result = await admin.syncPresence();
-      setSyncMsg(result.message);
-      await refresh();
-    } catch (e: unknown) {
-      setSyncMsg(String(e));
-    } finally {
-      setSyncing(null);
-    }
-  }
-
   return (
     <div className="p-6 space-y-6">
       <h1 className="text-2xl font-semibold">Dashboard</h1>
@@ -67,11 +154,10 @@ function Dashboard() {
       <div className="rounded-xl border bg-white p-4 space-y-3">
         <h2 className="font-medium text-gray-700">Manual Sync</h2>
         <div className="flex flex-wrap gap-2">
-          <SyncButton label="Sync Slack Users" loading={syncing === "slack-users"} onClick={() => triggerSync("slack-users")} />
-          <SyncButton label="Sync User Mappings" loading={syncing === "user-mappings"} onClick={() => triggerSync("user-mappings")} />
-          <SyncButton label="Reconcile Presence" loading={syncing === "presence"} onClick={() => triggerSync("presence")} />
+          <SyncButton label="Sync Slack Users" onClick={() => setActiveSync("slack-users")} />
+          <SyncButton label="Sync User Mappings" onClick={() => setActiveSync("user-mappings")} />
+          <SyncButton label="Reconcile Presence" onClick={() => setActiveSync("presence")} />
         </div>
-        {syncMsg && <p className="text-sm text-gray-600 bg-gray-50 rounded px-3 py-2">{syncMsg}</p>}
       </div>
 
       {/* Active users */}
@@ -103,6 +189,13 @@ function Dashboard() {
           </div>
         )}
       </div>
+
+      {activeSync && (
+        <SyncLogModal
+          type={activeSync}
+          onClose={() => { setActiveSync(null); refresh(); }}
+        />
+      )}
     </div>
   );
 }
@@ -122,14 +215,13 @@ function StatCard({ label, value, color }: { label: string; value: string; color
   );
 }
 
-function SyncButton({ label, loading, onClick }: { label: string; loading: boolean; onClick: () => void }) {
+function SyncButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      disabled={loading}
-      className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50 disabled:opacity-50"
+      className="rounded-lg border px-3 py-1.5 text-sm hover:bg-gray-50"
     >
-      {loading ? "Syncing…" : label}
+      {label}
     </button>
   );
 }

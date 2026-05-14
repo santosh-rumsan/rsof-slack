@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsersRouteImport } from './routes/users'
+import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ReportsRouteImport } from './routes/reports'
 import { Route as PresenceRouteImport } from './routes/presence'
 import { Route as DocsRouteImport } from './routes/docs'
@@ -20,6 +21,11 @@ import { Route as UsersSlackIdRouteImport } from './routes/users_.$slackId'
 const UsersRoute = UsersRouteImport.update({
   id: '/users',
   path: '/users',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SettingsRoute = SettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ReportsRoute = ReportsRouteImport.update({
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/docs': typeof DocsRoute
   '/presence': typeof PresenceRoute
   '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
   '/users': typeof UsersRoute
   '/users/$slackId': typeof UsersSlackIdRoute
 }
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/docs': typeof DocsRoute
   '/presence': typeof PresenceRoute
   '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
   '/users': typeof UsersRoute
   '/users/$slackId': typeof UsersSlackIdRoute
 }
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/docs': typeof DocsRoute
   '/presence': typeof PresenceRoute
   '/reports': typeof ReportsRoute
+  '/settings': typeof SettingsRoute
   '/users': typeof UsersRoute
   '/users_/$slackId': typeof UsersSlackIdRoute
 }
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/presence'
     | '/reports'
+    | '/settings'
     | '/users'
     | '/users/$slackId'
   fileRoutesByTo: FileRoutesByTo
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/presence'
     | '/reports'
+    | '/settings'
     | '/users'
     | '/users/$slackId'
   id:
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/docs'
     | '/presence'
     | '/reports'
+    | '/settings'
     | '/users'
     | '/users_/$slackId'
   fileRoutesById: FileRoutesById
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   DocsRoute: typeof DocsRoute
   PresenceRoute: typeof PresenceRoute
   ReportsRoute: typeof ReportsRoute
+  SettingsRoute: typeof SettingsRoute
   UsersRoute: typeof UsersRoute
   UsersSlackIdRoute: typeof UsersSlackIdRoute
 }
@@ -128,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/users'
       fullPath: '/users'
       preLoaderRoute: typeof UsersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/settings': {
+      id: '/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/reports': {
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   DocsRoute: DocsRoute,
   PresenceRoute: PresenceRoute,
   ReportsRoute: ReportsRoute,
+  SettingsRoute: SettingsRoute,
   UsersRoute: UsersRoute,
   UsersSlackIdRoute: UsersSlackIdRoute,
 }

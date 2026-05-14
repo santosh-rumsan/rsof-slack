@@ -3,7 +3,7 @@ import { GoogleOAuthProvider } from "@react-oauth/google";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { PresenceProvider } from "@/lib/presence-context";
 import { PresenceToaster } from "@/components/presence-toast";
-import { LayoutDashboard, Users, BarChart2, LogOut, Activity, BookOpen, Radio } from "lucide-react";
+import { LayoutDashboard, Users, BarChart2, LogOut, Activity, BookOpen, Radio, Settings } from "lucide-react";
 import React from "react";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
@@ -27,6 +27,7 @@ function Layout() {
             <NavLink to="/activity" icon={<Activity size={16} />} label="Activity" />
             <NavLink to="/presence" icon={<Radio size={16} />} label="Presence" />
             <NavLink to="/docs" icon={<BookOpen size={16} />} label="Docs" />
+            <NavLink to="/settings" icon={<Settings size={16} />} label="Settings" />
           </nav>
           <div className="border-t p-3">
             <button

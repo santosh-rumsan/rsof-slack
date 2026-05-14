@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { getJwt } from "@/lib/api";
 
 export interface PresenceEvent {
+  type: "presence";
   slack_id: string;
   presence: "active" | "away";
   source: string;
@@ -11,8 +12,21 @@ export interface PresenceEvent {
   ts: string;
 }
 
+export interface StatusEvent {
+  type: "status";
+  slack_id: string;
+  status_text: string | null;
+  status_emoji: string | null;
+  real_name: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  ts: string;
+}
+
+export type ActivityEvent = PresenceEvent | StatusEvent;
+
 interface PresenceState {
-  events: PresenceEvent[];
+  events: ActivityEvent[];
   presenceMap: Record<string, "active" | "away">;
   connected: boolean;
 }
@@ -28,7 +42,7 @@ export function usePresence() {
 }
 
 export function PresenceProvider({ children }: { children: React.ReactNode }) {
-  const [events, setEvents] = useState<PresenceEvent[]>([]);
+  const [events, setEvents] = useState<ActivityEvent[]>([]);
   const [presenceMap, setPresenceMap] = useState<Record<string, "active" | "away">>({});
   const [connected, setConnected] = useState(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,9 +71,11 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
           for (const line of lines) {
             if (!line.startsWith("data: ")) continue;
             try {
-              const ev = JSON.parse(line.slice(6)) as PresenceEvent;
+              const ev = JSON.parse(line.slice(6)) as ActivityEvent;
               setEvents((prev) => [ev, ...prev].slice(0, 50));
-              setPresenceMap((prev) => ({ ...prev, [ev.slack_id]: ev.presence }));
+              if (ev.type === "presence") {
+                setPresenceMap((prev) => ({ ...prev, [ev.slack_id]: ev.presence }));
+              }
             } catch {
               // ignore malformed SSE frames
             }

@@ -1,8 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { admin, type SlackUser, type PresenceHistory, type DurationSummary } from "@/lib/api";
+import { admin, type SlackUser, type PresenceHistory, type StatusHistory, type DurationSummary } from "@/lib/api";
 import { PresenceBadge } from "@/components/presence-badge";
 import { usePresence } from "@/lib/presence-context";
+import { renderSlackEmoji } from "@/lib/slack-emoji";
 
 export const Route = createFileRoute("/users_/$slackId")({
   component: UserDetailPage,
@@ -16,9 +17,31 @@ interface Segment {
   startPct: number;
   widthPct: number;
   presence: "active" | "away" | "unknown";
+  /** Status text active at the start of this segment, if any */
+  statusText: string | null;
+  statusEmoji: string | null;
 }
 
-function buildDaySegments(history: PresenceHistory[], date: Date): Segment[] {
+/** Find what status was active at a given timestamp, using the status history sorted ascending. */
+function statusAtTime(statusHistory: StatusHistory[], ts: number): { text: string | null; emoji: string | null } {
+  let text: string | null = null;
+  let emoji: string | null = null;
+  for (const s of statusHistory) {
+    if (new Date(s.recorded_at).getTime() <= ts) {
+      text = s.status_text;
+      emoji = s.status_emoji;
+    } else {
+      break;
+    }
+  }
+  return { text, emoji };
+}
+
+function buildDaySegments(
+  history: PresenceHistory[],
+  statusHistory: StatusHistory[],
+  date: Date,
+): Segment[] {
   const now = Date.now();
   const y = date.getFullYear();
   const m = date.getMonth();
@@ -61,10 +84,13 @@ function buildDaySegments(history: PresenceHistory[], date: Date): Segment[] {
     }
     const segEnd = Math.min(evMs, windowEnd);
     if (segEnd > cursor) {
+      const { text, emoji } = statusAtTime(statusHistory, cursor);
       segments.push({
         startPct: ((cursor - windowStart) / WORK_DURATION_MS) * 100,
         widthPct: ((segEnd - cursor) / WORK_DURATION_MS) * 100,
         presence: state,
+        statusText: text,
+        statusEmoji: emoji,
       });
     }
     state = ev.presence as "active" | "away";
@@ -73,10 +99,13 @@ function buildDaySegments(history: PresenceHistory[], date: Date): Segment[] {
   }
 
   if (cursor < windowEnd) {
+    const { text, emoji } = statusAtTime(statusHistory, cursor);
     segments.push({
       startPct: ((cursor - windowStart) / WORK_DURATION_MS) * 100,
       widthPct: ((windowEnd - cursor) / WORK_DURATION_MS) * 100,
       presence: state,
+      statusText: text,
+      statusEmoji: emoji,
     });
   }
 
@@ -98,10 +127,20 @@ function DayLabel({ date }: { date: Date }) {
   );
 }
 
-function SegmentColor({ presence }: { presence: "active" | "away" | "unknown" }) {
+function segmentColor(presence: "active" | "away" | "unknown"): string {
   if (presence === "active") return "bg-green-400";
   if (presence === "away") return "bg-gray-200";
   return "bg-gray-100";
+}
+
+function buildTooltip(seg: Segment): string {
+  const parts: string[] = [seg.presence];
+  if (seg.presence === "away" && (seg.statusText || seg.statusEmoji)) {
+    const emoji = seg.statusEmoji ? renderSlackEmoji(seg.statusEmoji) : "";
+    const text = seg.statusText ? renderSlackEmoji(seg.statusText) : "";
+    parts.push(`${emoji} ${text}`.trim());
+  }
+  return parts.join(" — ");
 }
 
 function getWeekRange(weekOffset: number): { from: Date; to: Date } {
@@ -128,12 +167,14 @@ function getWeekDays(weekOffset: number): Date[] {
 
 function Timeline({
   history,
+  statusHistory,
   weekOffset,
   loading,
   onPrev,
   onNext,
 }: {
   history: PresenceHistory[];
+  statusHistory: StatusHistory[];
   weekOffset: number;
   loading: boolean;
   onPrev: () => void;
@@ -176,7 +217,7 @@ function Timeline({
 
       <div className="space-y-2">
         {days.map((date, di) => {
-          const segments = buildDaySegments(history, date);
+          const segments = buildDaySegments(history, statusHistory, date);
           return (
             <div key={di} className="flex items-center gap-3">
               <DayLabel date={date} />
@@ -191,9 +232,9 @@ function Timeline({
                 {segments.map((seg, si) => (
                   <div
                     key={si}
-                    className={`absolute top-0 bottom-0 ${SegmentColor({ presence: seg.presence })}`}
+                    className={`absolute top-0 bottom-0 ${segmentColor(seg.presence)}`}
                     style={{ left: `${seg.startPct}%`, width: `${seg.widthPct}%` }}
-                    title={`${seg.presence}`}
+                    title={buildTooltip(seg)}
                   />
                 ))}
               </div>
@@ -231,10 +272,17 @@ function Timeline({
   );
 }
 
+/** Find what status was active at a given ISO timestamp from a sorted-ascending status history. */
+function statusAtTimestamp(statusHistory: StatusHistory[], iso: string): { text: string | null; emoji: string | null } {
+  const ts = new Date(iso).getTime();
+  return statusAtTime(statusHistory, ts);
+}
+
 function UserDetailPage() {
   const { slackId } = Route.useParams();
   const [user, setUser] = useState<SlackUser | null>(null);
   const [history, setHistory] = useState<PresenceHistory[]>([]);
+  const [statusHistory, setStatusHistory] = useState<StatusHistory[]>([]);
   const [duration, setDuration] = useState<DurationSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [weekLoading, setWeekLoading] = useState(false);
@@ -252,11 +300,13 @@ function UserDetailPage() {
     Promise.all([
       userFetch,
       admin.getUserPresenceHistory(slackId, fromISO, toISO),
+      admin.getUserStatusHistory(slackId, fromISO, toISO),
       admin.getUserDuration(slackId, fromISO, toISO),
     ])
-      .then(([u, h, d]) => {
+      .then(([u, h, sh, d]) => {
         setUser(u);
         setHistory(h);
+        setStatusHistory(sh);
         setDuration(d);
       })
       .finally(() => {
@@ -276,6 +326,11 @@ function UserDetailPage() {
   const awaySec = duration?.durations.find((d) => d.presence === "away")?.total_seconds ?? 0;
   const total = activeSec + awaySec;
   const availPct = total > 0 ? ((activeSec / total) * 100).toFixed(1) : "—";
+
+  // Sort status history ascending for lookup
+  const sortedStatusHistory = [...statusHistory].sort(
+    (a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime(),
+  );
 
   return (
     <div className="p-6 space-y-6">
@@ -302,7 +357,8 @@ function UserDetailPage() {
           {user.email && <p className="text-sm text-gray-400">{user.email}</p>}
           {user.current_status_text && (
             <p className="text-sm text-gray-600 mt-1">
-              {user.current_status_emoji} {user.current_status_text}
+              {user.current_status_emoji ? renderSlackEmoji(user.current_status_emoji) : ""}{" "}
+              {renderSlackEmoji(user.current_status_text)}
             </p>
           )}
         </div>
@@ -316,6 +372,7 @@ function UserDetailPage() {
       {/* Day timeline */}
       <Timeline
         history={history}
+        statusHistory={sortedStatusHistory}
         weekOffset={weekOffset}
         loading={weekLoading}
         onPrev={() => setWeekOffset((w) => w - 1)}
@@ -333,6 +390,7 @@ function UserDetailPage() {
               <tr>
                 <th className="px-4 py-2 text-left">Time</th>
                 <th className="px-4 py-2 text-left">Presence</th>
+                <th className="px-4 py-2 text-left">Status at event</th>
                 <th className="px-4 py-2 text-left">Source</th>
               </tr>
             </thead>
@@ -340,17 +398,30 @@ function UserDetailPage() {
               {[...history]
                 .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
                 .slice(0, 100)
-                .map((h) => (
-                  <tr key={h.id}>
-                    <td className="px-4 py-2 text-gray-500">
-                      {new Date(h.recorded_at).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2">
-                      <PresenceBadge presence={h.presence as "active" | "away"} showLabel />
-                    </td>
-                    <td className="px-4 py-2 text-gray-400 text-xs">{h.source}</td>
-                  </tr>
-                ))}
+                .map((h) => {
+                  const { text, emoji } = statusAtTimestamp(sortedStatusHistory, h.recorded_at);
+                  return (
+                    <tr key={h.id}>
+                      <td className="px-4 py-2 text-gray-500">
+                        {new Date(h.recorded_at).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2">
+                        <PresenceBadge presence={h.presence as "active" | "away"} showLabel />
+                      </td>
+                      <td className="px-4 py-2 text-gray-600 text-xs">
+                        {(text || emoji) ? (
+                          <>
+                            {emoji ? renderSlackEmoji(emoji) : ""}{" "}
+                            {text ? renderSlackEmoji(text) : ""}
+                          </>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-gray-400 text-xs">{h.source}</td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         )}

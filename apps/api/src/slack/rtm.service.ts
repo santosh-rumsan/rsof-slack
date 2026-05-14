@@ -141,6 +141,7 @@ export class RtmService implements OnApplicationShutdown {
     );
 
     this.events.emit({
+      type: 'presence',
       slack_id: slackId,
       presence,
       source,
@@ -174,5 +175,16 @@ export class RtmService implements OnApplicationShutdown {
         data: { slackId, statusText, statusEmoji },
       }),
     ]);
+
+    this.events.emit({
+      type: 'status',
+      slack_id: slackId,
+      status_text: statusText || null,
+      status_emoji: statusEmoji || null,
+      real_name: user.realName,
+      display_name: user.displayName,
+      avatar_url: user.avatarUrl,
+      ts: new Date().toISOString(),
+    });
   }
 }

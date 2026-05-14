@@ -4,12 +4,14 @@ import {
   Post,
   Param,
   Query,
+  Res,
   NotFoundException,
   UseGuards,
   Sse,
   MessageEvent,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
+import type { Response } from 'express';
 import { ApiKeyOrJwtAdminGuard } from '../auth/api-key-or-jwt-admin.guard';
 import { AdminService } from './admin.service';
 import { EventsService } from '../events/events.service';
@@ -36,16 +38,67 @@ export class AdminController {
     return { message: `Sync complete: ${JSON.stringify(stats)}` };
   }
 
+  @Get('sync/slack-users/stream')
+  async streamSlackUserSync(@Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    const send = (msg: string) => res.write(`data: ${JSON.stringify({ log: msg })}\n\n`);
+    try {
+      const stats = await this.slackSync.syncSlackUsers(send);
+      send(`DONE: ${JSON.stringify(stats)}`);
+    } catch (e: any) {
+      send(`ERROR: ${e.message}`);
+    } finally {
+      res.end();
+    }
+  }
+
   @Post('sync/user-mappings')
   async triggerUserMappingSync() {
     const stats = await this.userMappingSync.syncUserMappings();
     return { message: `Sync complete: ${JSON.stringify(stats)}` };
   }
 
+  @Get('sync/user-mappings/stream')
+  async streamUserMappingSync(@Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    const send = (msg: string) => res.write(`data: ${JSON.stringify({ log: msg })}\n\n`);
+    try {
+      const stats = await this.userMappingSync.syncUserMappings(send);
+      send(`DONE: ${JSON.stringify(stats)}`);
+    } catch (e: any) {
+      send(`ERROR: ${e.message}`);
+    } finally {
+      res.end();
+    }
+  }
+
   @Post('sync/presence')
   async triggerPresenceSync() {
     const stats = await this.slackSync.reconcilePresence();
     return { message: `Reconciliation complete: ${JSON.stringify(stats)}` };
+  }
+
+  @Get('sync/presence/stream')
+  async streamPresenceSync(@Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+    const send = (msg: string) => res.write(`data: ${JSON.stringify({ log: msg })}\n\n`);
+    try {
+      const stats = await this.slackSync.reconcilePresence(send);
+      send(`DONE: ${JSON.stringify(stats)}`);
+    } catch (e: any) {
+      send(`ERROR: ${e.message}`);
+    } finally {
+      res.end();
+    }
   }
 
   @Get('sync/status')
