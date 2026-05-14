@@ -21,6 +21,19 @@ interface Segment {
   statusEmoji: string | null;
 }
 
+function localToUtcMs(dateStr: string, hour: number, tz: string): number {
+  const h = Math.floor(hour);
+  const m = Math.round((hour - h) * 60);
+  const timeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+  try {
+    const fakeUtc = new Date(`${dateStr}T${timeStr}Z`);
+    const tzDate = new Date(fakeUtc.toLocaleString("en-US", { timeZone: tz }));
+    return fakeUtc.getTime() + (fakeUtc.getTime() - tzDate.getTime());
+  } catch {
+    return new Date(`${dateStr}T${timeStr}`).getTime();
+  }
+}
+
 /** Find what status was active at a given timestamp, using the status history sorted ascending. */
 function statusAtTime(statusHistory: StatusHistory[], ts: number): { text: string | null; emoji: string | null } {
   let text: string | null = null;
@@ -42,25 +55,30 @@ function buildDaySegments(
   date: Date,
   workStart: number,
   workEnd: number,
+  timezone?: string | null,
 ): Segment[] {
   const now = Date.now();
   const workDurationMs = (workEnd - workStart) * 60 * 60 * 1000;
   const y = date.getFullYear();
-  const m = date.getMonth();
+  const mo = date.getMonth();
   const d = date.getDate();
-  const startH = Math.floor(workStart);
-  const startM = Math.round((workStart - startH) * 60);
-  const endH = Math.floor(workEnd);
-  const endM = Math.round((workEnd - endH) * 60);
-  const windowStart = new Date(y, m, d, startH, startM, 0, 0).getTime();
-  const rawWindowEnd = new Date(y, m, d, endH, endM, 0, 0).getTime();
+  const dateStr = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+  const windowStart = timezone
+    ? localToUtcMs(dateStr, workStart, timezone)
+    : new Date(y, mo, d, Math.floor(workStart), Math.round((workStart % 1) * 60), 0, 0).getTime();
+  const rawWindowEnd = timezone
+    ? localToUtcMs(dateStr, workEnd, timezone)
+    : new Date(y, mo, d, Math.floor(workEnd), Math.round((workEnd % 1) * 60), 0, 0).getTime();
 
   // Future days: no data
   if (windowStart > now) return [];
 
   // Today: cap at current time
   const windowEnd = Math.min(rawWindowEnd, now);
-  const dayMidnight = new Date(y, m, d, 0, 0, 0, 0).getTime();
+  const dayMidnight = timezone
+    ? localToUtcMs(dateStr, 0, timezone)
+    : new Date(y, mo, d, 0, 0, 0, 0).getTime();
   const nextMidnight = dayMidnight + 86400000;
 
   // Events strictly in this calendar day, ascending
@@ -294,6 +312,7 @@ function Timeline({
   loading,
   workStart,
   workEnd,
+  timezone,
   onPrev,
   onNext,
 }: {
@@ -303,6 +322,7 @@ function Timeline({
   loading: boolean;
   workStart: number;
   workEnd: number;
+  timezone?: string | null;
   onPrev: () => void;
   onNext: () => void;
 }) {
@@ -353,7 +373,7 @@ function Timeline({
 
       <div className="space-y-2 overflow-x-auto">
         {days.map((date, di) => {
-          const segments = buildDaySegments(history, statusHistory, date, workStart, workEnd);
+          const segments = buildDaySegments(history, statusHistory, date, workStart, workEnd, timezone);
           const { activeSec, awaySec } = computeDayDuration(segments, workStart, workEnd);
           const total = activeSec + awaySec;
           const activePct = total > 0 ? `${((activeSec / total) * 100).toFixed(0)}%` : "—";
@@ -502,6 +522,7 @@ function UserDetailPage() {
               <PresenceBadge presence={livePresence} showLabel />
             </div>
             {user.email && <p className="text-sm text-gray-400">{user.email}</p>}
+            {user.timezone && <p className="text-xs text-gray-400 mt-0.5">{user.timezone}</p>}
             {user.current_status_text && (
               <p className="text-sm text-gray-600 mt-1">
                 {user.current_status_emoji ? <SlackText text={user.current_status_emoji} /> : null}{" "}
@@ -525,6 +546,7 @@ function UserDetailPage() {
         loading={weekLoading}
         workStart={workStart}
         workEnd={workEnd}
+        timezone={user.timezone}
         onPrev={() => setWeekOffset((w) => w - 1)}
         onNext={() => setWeekOffset((w) => Math.min(w + 1, 0))}
       />

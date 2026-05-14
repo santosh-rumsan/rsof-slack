@@ -17,24 +17,46 @@ interface Segment {
   presence: "active" | "away" | "unknown";
 }
 
+function localToUtcMs(dateStr: string, hour: number, tz: string): number {
+  const h = Math.floor(hour);
+  const m = Math.round((hour - h) * 60);
+  const timeStr = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+  try {
+    const fakeUtc = new Date(`${dateStr}T${timeStr}Z`);
+    const tzDate = new Date(fakeUtc.toLocaleString("en-US", { timeZone: tz }));
+    return fakeUtc.getTime() + (fakeUtc.getTime() - tzDate.getTime());
+  } catch {
+    return new Date(`${dateStr}T${timeStr}`).getTime();
+  }
+}
+
 function buildDaySegments(
   history: PresenceHistory[],
   date: Date,
   workStart: number,
   workEnd: number,
+  timezone?: string | null,
 ): Segment[] {
   const now = Date.now();
   const workDurationMs = (workEnd - workStart) * 60 * 60 * 1000;
   const y = date.getFullYear();
-  const m = date.getMonth();
+  const mo = date.getMonth();
   const d = date.getDate();
-  const windowStart = new Date(y, m, d, workStart, 0, 0, 0).getTime();
-  const rawWindowEnd = new Date(y, m, d, workEnd, 0, 0, 0).getTime();
+  const dateStr = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+
+  const windowStart = timezone
+    ? localToUtcMs(dateStr, workStart, timezone)
+    : new Date(y, mo, d, workStart, 0, 0, 0).getTime();
+  const rawWindowEnd = timezone
+    ? localToUtcMs(dateStr, workEnd, timezone)
+    : new Date(y, mo, d, workEnd, 0, 0, 0).getTime();
 
   if (windowStart > now) return [];
 
   const windowEnd = Math.min(rawWindowEnd, now);
-  const dayMidnight = new Date(y, m, d, 0, 0, 0, 0).getTime();
+  const dayMidnight = timezone
+    ? localToUtcMs(dateStr, 0, timezone)
+    : new Date(y, mo, d, 0, 0, 0, 0).getTime();
   const nextMidnight = dayMidnight + 86400000;
 
   const dayEvents = history
@@ -246,7 +268,7 @@ function PresenceOverviewPage() {
           <div className="space-y-1">
             {sortedUsers.map((user) => {
               const history = historyMap[user.slack_id] ?? [];
-              const segments = buildDaySegments(history, selectedDate, workStart, workEnd);
+              const segments = buildDaySegments(history, selectedDate, workStart, workEnd, user.timezone);
               const livePresence = presenceMap[user.slack_id] ?? user.current_presence;
               const { activeSec, awaySec } = computeDayDuration(segments, workStart, workEnd);
               const total = activeSec + awaySec;

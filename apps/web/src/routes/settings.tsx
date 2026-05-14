@@ -3,6 +3,12 @@ import { useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { admin, type JobStatus, type AppSetting, SETTING_META } from "@/lib/api";
 
+const CANONICAL_TIMEZONES = [
+  "America/New_York",
+  "America/Chicago",
+  "Asia/Kathmandu",
+];
+
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
 });
@@ -75,7 +81,17 @@ function SettingsPage() {
         const map: Record<string, string> = {};
         for (const { key, value } of s) {
           const meta = SETTING_META[key];
-          map[key] = meta?.type === "time" ? decimalToTime(value) : value;
+          if (meta?.type === "time") {
+            map[key] = decimalToTime(value);
+          } else if (meta?.type === "timezone") {
+            try {
+              map[key] = new Intl.DateTimeFormat("en", { timeZone: value }).resolvedOptions().timeZone;
+            } catch {
+              map[key] = value;
+            }
+          } else {
+            map[key] = value;
+          }
         }
         setEdited(map);
       })
@@ -141,7 +157,7 @@ function SettingsPage() {
                         onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
                         className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30"
                       >
-                        {(Intl as any).supportedValuesOf("timeZone").map((tz: string) => (
+                        {CANONICAL_TIMEZONES.map((tz) => (
                           <option key={tz} value={tz}>{tz}</option>
                         ))}
                       </select>

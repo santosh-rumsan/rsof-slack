@@ -145,7 +145,17 @@ function Dashboard() {
 
       {/* Status bar */}
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
-        <StatCard label="RTM Status" value={healthData?.rtm ?? "—"} color={healthData?.rtm === "connected" ? "green" : "red"} />
+        <div className="rounded-xl border bg-white p-4">
+          <p className="text-xs text-gray-500 uppercase tracking-wide">RTM Status</p>
+          <div className="mt-2 flex items-center gap-2">
+            <span
+              className={`h-4 w-4 rounded-full flex-shrink-0 ${healthData?.rtm === "connected" ? "bg-green-500" : "bg-red-500"}`}
+            />
+            <span className={`text-sm font-semibold ${healthData?.rtm === "connected" ? "text-green-600" : "text-red-500"}`}>
+              {healthData?.rtm === "connected" ? "Connected" : healthData?.rtm ?? "—"}
+            </span>
+          </div>
+        </div>
         <StatCard label="Currently Active" value={String(activeUsers.length)} color="blue" />
         <StatCard label="Total Users" value={String(allUsers.length)} color="gray" />
       </div>

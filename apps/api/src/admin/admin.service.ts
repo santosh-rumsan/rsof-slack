@@ -28,12 +28,16 @@ export class AdminService {
     const users = await this.prisma.slackUser.findMany({
       where,
       orderBy: { realName: 'asc' },
+      include: { userMapping: true },
     });
     return users.map(mapUser);
   }
 
   async getUser(slackId: string) {
-    const user = await this.prisma.slackUser.findUnique({ where: { slackId } });
+    const user = await this.prisma.slackUser.findUnique({
+      where: { slackId },
+      include: { userMapping: true },
+    });
     return user ? mapUser(user) : null;
   }
 
@@ -79,7 +83,8 @@ export class AdminService {
       where: { slackId },
       select: { userTimezone: true },
     });
-    const timezone = mapping?.userTimezone ?? this.settings.get('TIMEZONE', 'UTC');
+    const rawTz = mapping?.userTimezone ?? this.settings.get('TIMEZONE', 'UTC');
+    const timezone = safeTimezone(rawTz, this.settings.get('TIMEZONE', 'UTC'));
     const workStart = this.settings.getNumber('WORK_START_HOUR', 0);
     const workEnd = this.settings.getNumber('WORK_END_HOUR', 24);
 
@@ -131,7 +136,7 @@ export class AdminService {
   }
 
   async reportPresenceSummary(from?: Date, to?: Date) {
-    const timezone = this.settings.get('TIMEZONE', 'UTC');
+    const timezone = safeTimezone(this.settings.get('TIMEZONE', 'UTC'), 'UTC');
     const workStart = this.settings.getNumber('WORK_START_HOUR', 0);
     const workEnd = this.settings.getNumber('WORK_END_HOUR', 24);
 
@@ -182,7 +187,7 @@ export class AdminService {
   }
 
   async reportActiveHours(from?: Date, to?: Date) {
-    const timezone = this.settings.get('TIMEZONE', 'UTC');
+    const timezone = safeTimezone(this.settings.get('TIMEZONE', 'UTC'), 'UTC');
     const workStart = this.settings.getNumber('WORK_START_HOUR', 0);
     const workEnd = this.settings.getNumber('WORK_END_HOUR', 24);
 
@@ -239,6 +244,15 @@ export class AdminService {
 
 // ─── Mapper ────────────────────────────────────────────────────────────────
 
+function safeTimezone(tz: string | null | undefined, fallback: string): string {
+  if (!tz) return fallback;
+  try {
+    return new Intl.DateTimeFormat('en', { timeZone: tz }).resolvedOptions().timeZone;
+  } catch {
+    return fallback;
+  }
+}
+
 function mapUser(u: any) {
   return {
     slack_id: u.slackId,
@@ -253,5 +267,6 @@ function mapUser(u: any) {
     last_presence_update: u.lastPresenceUpdate,
     created_at: u.createdAt,
     updated_at: u.updatedAt,
+    timezone: u.userMapping?.userTimezone ?? null,
   };
 }

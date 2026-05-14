@@ -55,6 +55,7 @@ export interface SlackUser {
   last_presence_update: string | null;
   created_at: string;
   updated_at: string;
+  timezone: string | null;
 }
 
 export interface PresenceHistory {

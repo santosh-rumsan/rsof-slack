@@ -67,12 +67,9 @@ export default function ActivityLog() {
       <div className="flex items-center gap-3">
         <h1 className="text-2xl font-semibold">Presence Activity</h1>
         <span
-          className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-            connected ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-          }`}
-        >
-          {connected ? "live" : "disconnected"}
-        </span>
+          className={`h-3 w-3 rounded-full flex-shrink-0 ${connected ? "bg-green-500" : "bg-red-500"}`}
+          title={connected ? "Connected" : "Disconnected"}
+        />
       </div>
 
       <div className="flex-1 overflow-auto rounded-xl border bg-white">

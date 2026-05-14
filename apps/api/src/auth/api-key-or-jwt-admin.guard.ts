@@ -47,10 +47,14 @@ export class ApiKeyOrJwtAdminGuard implements CanActivate {
       }
 
       const appId = this.config.get<string>('APP_ID', '');
-      const requiredRole = `${appId}|admin`;
       const roles: string[] = Array.isArray(payload.roles) ? payload.roles : [];
 
-      if (!appId || !roles.includes(requiredRole)) {
+      const hasAdminRole = roles.some((r) => {
+        const [roleAppId, rolePart] = r.split('|');
+        return roleAppId === appId && rolePart?.split(',').includes('admin');
+      });
+
+      if (!appId || !hasAdminRole) {
         throw new UnauthorizedException('Insufficient permissions');
       }
 
