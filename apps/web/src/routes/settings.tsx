@@ -84,11 +84,7 @@ function SettingsPage() {
           if (meta?.type === "time") {
             map[key] = decimalToTime(value);
           } else if (meta?.type === "timezone") {
-            try {
-              map[key] = new Intl.DateTimeFormat("en", { timeZone: value }).resolvedOptions().timeZone;
-            } catch {
-              map[key] = value;
-            }
+            map[key] = value;
           } else {
             map[key] = value;
           }

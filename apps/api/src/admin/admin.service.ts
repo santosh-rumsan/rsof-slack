@@ -247,7 +247,8 @@ export class AdminService {
 function safeTimezone(tz: string | null | undefined, fallback: string): string {
   if (!tz) return fallback;
   try {
-    return new Intl.DateTimeFormat('en', { timeZone: tz }).resolvedOptions().timeZone;
+    new Intl.DateTimeFormat('en', { timeZone: tz });
+    return tz;
   } catch {
     return fallback;
   }

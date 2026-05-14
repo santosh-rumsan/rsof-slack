@@ -6,7 +6,8 @@ import { SettingsService } from '../settings/settings.service';
 function canonicalizeTimezone(tz: string | null): string | null {
   if (!tz) return null;
   try {
-    return new Intl.DateTimeFormat('en', { timeZone: tz }).resolvedOptions().timeZone;
+    new Intl.DateTimeFormat('en', { timeZone: tz });
+    return tz;
   } catch {
     return null;
   }
