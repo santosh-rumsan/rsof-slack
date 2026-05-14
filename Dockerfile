@@ -1,48 +1,49 @@
-# ── Stage 1: Build frontend ──────────────────────────────────────────────────
+# ── Stage 1: Build frontend ───────────────────────────────────────────────
 FROM node:20-alpine AS frontend-builder
 
-WORKDIR /build/frontend
+WORKDIR /build/apps/web
+COPY apps/web/package.json ./
+RUN npm install
+COPY apps/web/ .
+RUN npm run build
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# ── Stage 2: Build NestJS API ─────────────────────────────────────────────
+FROM node:20-alpine AS api-builder
 
-COPY frontend/package.json frontend/pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+RUN apk add --no-cache openssl
 
-COPY frontend/ .
-RUN pnpm build
+WORKDIR /build/apps/api
+COPY apps/api/package.json apps/api/package-lock.json* ./
+RUN npm install
+COPY apps/api/ .
+RUN npx prisma generate
+RUN npm run build
 
-# ── Stage 2: Python application ───────────────────────────────────────────────
-FROM python:3.12-slim
+# ── Stage 3: Production runtime ───────────────────────────────────────────
+FROM node:20-alpine
 
-# Install psycopg2 build deps (needed by Alembic sync driver)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv
-RUN pip install uv --no-cache-dir
+RUN apk add --no-cache curl openssl
 
 WORKDIR /app
 
-# Install Python dependencies
-COPY pyproject.toml ./
-RUN uv pip install --system -e .
+# Copy package files and install production deps
+COPY apps/api/package.json ./
+RUN npm install --omit=dev && \
+    sed -i 's/if (error !== undefined)/if (error)/' node_modules/@slack/rtm-api/dist/RTMClient.js
 
-# Install psycopg2 for Alembic (sync migrations)
-RUN pip install psycopg2-binary --no-cache-dir
+# Copy built app and prisma schema (needed for migrate deploy + generate)
+COPY --from=api-builder /build/apps/api/dist ./dist
+COPY --from=api-builder /build/apps/api/prisma ./prisma
 
-# Copy application code
-COPY app/ ./app/
-COPY alembic/ ./alembic/
-COPY alembic.ini ./
+# Generate Prisma client in production image
+RUN npx prisma generate
 
 # Copy built frontend
-COPY --from=frontend-builder /build/frontend/dist ./frontend/dist
+COPY --from=frontend-builder /build/apps/web/dist ./frontend/dist
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
-CMD ["python", "-m", "app.main"]
+CMD ["node", "dist/main"]

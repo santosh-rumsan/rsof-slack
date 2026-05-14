@@ -1,329 +1,248 @@
 # rsof-slack
 
-Slack presence and status monitoring service. Tracks real-time presence (`active`/`away`), status text/emoji, busy state, and DnD for all users in your Slack workspace. Stores historical data in PostgreSQL so you can run availability analytics and insights.
+Slack presence and status monitoring — real-time dashboard tracking who's active, away, on DnD, and what their status is.
 
----
+Uses Slack's RTM (Real-Time Messaging) WebSocket API for instant presence updates, with periodic polling as a reconciliation fallback.
 
-## Table of Contents
+## Stack
 
-1. [Architecture](#architecture)
-2. [Prerequisites](#prerequisites)
-3. [Slack App Setup](#slack-app-setup)
-4. [Configuration](#configuration)
-5. [Running with Docker (recommended)](#running-with-docker-recommended)
-6. [Local Development](#local-development)
-7. [Database Migrations](#database-migrations)
-8. [API Reference](#api-reference)
-9. [Web UI](#web-ui)
-10. [JWT Setup (for user-facing endpoints)](#jwt-setup)
+- **Backend:** NestJS (Node.js), Prisma ORM
+- **Database:** PostgreSQL
+- **Frontend:** React 19, TanStack Router, Tailwind CSS, Recharts
+- **Real-time:** Slack RTM via `@slack/rtm-api`, Server-Sent Events (SSE) to the browser
 
----
-
-## Architecture
+## Project structure
 
 ```
-┌─────────────────────────────────────────────┐
-│  Docker host                                │
-│                                             │
-│  ┌──────────────────────┐  ┌─────────────┐ │
-│  │  app (FastAPI)       │  │  postgres   │ │
-│  │  port 8000           │◄─►  port 5432  │ │
-│  │                      │  └─────────────┘ │
-│  │  ├── RTM WebSocket   │                  │
-│  │  │   (Slack events)  │                  │
-│  │  ├── APScheduler     │                  │
-│  │  │   periodic sync   │                  │
-│  │  └── React SPA       │                  │
-│  │      (frontend/dist) │                  │
-│  └──────────────────────┘                  │
-└─────────────────────────────────────────────┘
+rsof-slack/
+├── apps/
+│   ├── api/        NestJS backend
+│   │   ├── prisma/ Prisma schema + migrations
+│   │   └── src/
+│   └── web/        React frontend
+├── Dockerfile
+├── docker-compose.yml
+└── .env.example
 ```
-
-- **Real-time**: Slack Socket Mode (RTM) pushes `presence_change` and `user_change` events instantly
-- **Reconciliation**: APScheduler polls presence every 5 minutes as a catch-up sweep
-- **User sync**: APScheduler runs `users.list` every 30 minutes to catch new/deactivated users
-- **User mapping sync**: Syncs your internal user IDs from your user management API every 60 minutes
 
 ---
 
 ## Prerequisites
 
-- Docker 24+ and Docker Compose v2
-- A Slack workspace where you are an admin
-- (Optional) An RS256 JWT public key from your identity provider (for user-facing `/me` endpoints)
+- Node.js 20+
+- npm 10+ (for the API) and pnpm (for the frontend)
+- PostgreSQL 14+ (local dev only — Docker handles this automatically)
+- A Slack bot token (`xoxb-…`) with the `users:read`, `users:read.email`, `users.profile:read`, and `presence:read` OAuth scopes
 
 ---
 
-## Slack App Setup
+## Local development setup
 
-Follow these steps exactly to create the Slack app with the correct permissions.
-
-### 1. Create the app
-
-1. Go to [https://api.slack.com/apps](https://api.slack.com/apps)
-2. Click **Create New App** → **From scratch**
-3. Name: `rsof-slack` (or any name)
-4. Select your workspace → **Create App**
-
-### 2. Enable Socket Mode
-
-1. In the left sidebar, click **Socket Mode**
-2. Toggle **Enable Socket Mode** on
-3. Under **App-Level Tokens**, click **Generate an app-level token**
-4. Name: `rsof-slack-rtm`
-5. Add scope: **`connections:write`**
-6. Click **Generate** → copy the token (starts with `xapp-`)
-   → This is your `SLACK_APP_TOKEN`
-
-### 3. Add Bot Token Scopes
-
-1. In the left sidebar, click **OAuth & Permissions**
-2. Scroll to **Scopes → Bot Token Scopes**
-3. Add the following scopes:
-   - `users:read` — list all users
-   - `users:read.email` — read email addresses
-   - `users.profile:read` — read status text/emoji
-   - `dnd:read` — read Do Not Disturb status
-
-### 4. Enable Events (for `user_change` and `dnd_updated_user`)
-
-1. In the left sidebar, click **Event Subscriptions**
-2. Toggle **Enable Events** on
-3. Under **Subscribe to bot events**, add:
-   - `user_change`
-   - `dnd_updated_user`
-4. Click **Save Changes**
-
-### 5. Install to workspace
-
-1. In the left sidebar, click **OAuth & Permissions**
-2. Click **Install to Workspace** → **Allow**
-3. Copy the **Bot User OAuth Token** (starts with `xoxb-`)
-   → This is your `SLACK_BOT_TOKEN`
-
----
-
-## Configuration
+### 1. Clone and configure environment
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` and fill in at minimum:
 
-| Variable | Required | Description |
-|---|---|---|
-| `SLACK_BOT_TOKEN` | Yes | `xoxb-...` Bot token |
-| `SLACK_APP_TOKEN` | Yes | `xapp-...` App-level token for Socket Mode |
-| `DATABASE_URL` | Yes | PostgreSQL URL (auto-set by docker-compose) |
-| `POSTGRES_PASSWORD` | Yes | Password for the postgres container |
-| `API_KEY` | Yes | Strong random string — protects all admin endpoints and the web UI |
-| `JWT_PUBLIC_KEY_PEM` | No | RS256 public key PEM for `/me` JWT endpoints |
-| `USER_MGMT_API_URL` | No | URL returning `[{id, slack_id, ...}]` from your user management system |
-| `USER_MGMT_API_KEY` | No | Bearer token for the user management API |
-| `USER_SYNC_INTERVAL` | No | Minutes between Slack user syncs (default: 30) |
-| `PRESENCE_RECONCILE_INTERVAL` | No | Minutes between presence reconciliation polls (default: 5) |
-| `USER_MAPPING_SYNC_INTERVAL` | No | Minutes between user mapping syncs (default: 60) |
-| `APP_PORT` | No | Host port to expose (default: 8000) |
-| `LOG_LEVEL` | No | `info` / `debug` / `warning` (default: info) |
+| Variable | Description |
+|---|---|
+| `SLACK_BOT_TOKEN` | Your Slack bot token (`xoxb-…`) |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `API_KEY` | Any strong random string — used to authenticate the web UI and admin API |
+
+Optional (leave blank to skip):
+
+| Variable | Description |
+|---|---|
+| `JWT_PUBLIC_KEY_PEM` | RS256 public key PEM for the `/me/*` endpoints |
+| `USER_MGMT_API_URL` | External user management API URL |
+| `USER_MGMT_API_KEY` | Bearer token for the user management API |
+
+### 2. Set up the database
+
+Create the database (if it doesn't exist):
+
+```bash
+createdb rsof_slack
+```
+
+Or with a specific user:
+
+```bash
+psql -c "CREATE DATABASE rsof_slack;" postgres
+```
+
+The `DATABASE_URL` in `.env` should look like:
+
+```
+DATABASE_URL=postgresql://your_user:your_password@localhost:5432/rsof_slack
+```
+
+### 3. Install dependencies
+
+```bash
+# API
+cd apps/api
+npm install
+
+# Frontend
+cd ../web
+pnpm install
+```
+
+### 4. Run database migrations
+
+```bash
+cd apps/api
+npx prisma migrate deploy
+```
+
+This creates all four tables: `slack_users`, `presence_history`, `status_history`, `user_mappings`.
+
+### 5. Start the backend
+
+```bash
+cd apps/api
+npm run start:dev
+```
+
+The API starts on `http://localhost:8000`. On first startup it:
+1. Runs any pending migrations
+2. Syncs all Slack users into the database
+3. Connects to the Slack RTM WebSocket
+4. Starts the background scheduler
+
+### 6. Start the frontend (separate terminal)
+
+```bash
+cd apps/web
+pnpm dev
+```
+
+The frontend runs on `http://localhost:5173` (Vite dev server) and proxies API calls to `localhost:8000`.
+
+> **Note:** Make sure `vite.config.ts` has a proxy configured for `/api`. If not, set `VITE_API_BASE_URL` or add:
+> ```ts
+> server: {
+>   proxy: { '/api': 'http://localhost:8000' }
+> }
+> ```
+
+### 7. Log in
+
+Open `http://localhost:5173` in your browser and enter the `API_KEY` value from your `.env`.
 
 ---
 
-## Running with Docker (recommended)
+## Docker setup (recommended for production)
+
+### 1. Configure environment
 
 ```bash
-# 1. Copy and fill in config
 cp .env.example .env
-# Edit .env with your Slack tokens and API key
-
-# 2. Build and start
-docker compose up -d --build
-
-# 3. Check logs
-docker compose logs -f app
-
-# 4. Open the UI
-open http://localhost:8000
 ```
 
-The app will:
-1. Run Alembic migrations automatically on startup
-2. Sync all Slack users immediately
-3. Sync user mappings (if `USER_MGMT_API_URL` is set)
-4. Connect to Slack via Socket Mode
-5. Start the scheduled jobs
+Fill in `SLACK_BOT_TOKEN`, `API_KEY`, and `POSTGRES_PASSWORD`. The `DATABASE_URL` is **automatically overridden** by docker-compose to point at the Postgres container — you do not need to set it manually for Docker.
 
-To stop:
+### 2. Build and start
+
+```bash
+docker compose up --build
+```
+
+This:
+1. Builds the React frontend (Stage 1)
+2. Builds the NestJS API (Stage 2)
+3. Runs `prisma migrate deploy` on startup
+4. Starts PostgreSQL and the app containers
+
+The app is available at `http://localhost:8000` (or the port set by `APP_PORT`).
+
+### 3. Stopping
+
 ```bash
 docker compose down
 ```
 
-To stop and remove data:
+Data is persisted in the `postgres_data` Docker volume. To also remove the volume:
+
 ```bash
 docker compose down -v
 ```
 
 ---
 
-## Local Development
+## Database migrations
 
-### Backend
-
-```bash
-# Install Python deps
-uv sync
-
-# Copy and fill in config (set DATABASE_URL, SLACK tokens, API_KEY)
-cp .env.example .env
-
-# Create the database (if using an existing postgres, not docker-compose):
-# psql -U <user> -c "CREATE DATABASE rsof_slack;"
-# Or start a fresh postgres via docker-compose:
-docker compose up postgres -d
-
-# Source .env so alembic picks up DATABASE_URL, then run migrations
-set -a && source .env && set +a
-uv run alembic upgrade head
-
-# Start dev server (auto-reload)
-uv run dev
-```
-
-### Frontend
+Migrations are run automatically at startup (both locally with `npm run start:dev` and in Docker). To manage them manually:
 
 ```bash
-cd frontend
-pnpm install
-pnpm dev
-```
+cd apps/api
 
-The Vite dev server runs on port 5173 and proxies `/api` → `http://localhost:8000`.
+# Apply pending migrations
+npx prisma migrate deploy
 
----
+# Create a new migration after editing prisma/schema.prisma
+npx prisma migrate dev --name describe_your_change
 
-## Database Migrations
-
-Migrations run automatically on every container start. To run manually:
-
-```bash
-# Inside docker
-docker compose exec app alembic upgrade head
-
-# Locally
-uv run alembic upgrade head
-
-# Create a new migration after changing models
-uv run alembic revision --autogenerate -m "description"
+# Open Prisma Studio (database browser)
+npx prisma studio
 ```
 
 ---
 
-## API Reference
+## API overview
 
-Interactive docs are available at: `http://localhost:8000/docs`
+All endpoints are under `/api/v1`.
 
-All admin endpoints require the `X-API-Key` header.
+| Auth | Header | Used for |
+|---|---|---|
+| API key | `X-API-Key: <API_KEY>` | Admin + health endpoints |
+| JWT (RS256) | `Authorization: Bearer <token>` | `/me/*` endpoints |
 
-### Sync Endpoints
+### Endpoints
 
-```
-POST /api/v1/admin/sync/slack-users      Trigger Slack user sync
-POST /api/v1/admin/sync/user-mappings    Trigger user mapping sync
-POST /api/v1/admin/sync/presence         Reconcile presence for all users
-GET  /api/v1/admin/sync/status           Scheduler job next-run times
-```
-
-### User Endpoints
-
-```
-GET /api/v1/admin/users
-    ?ids=U123,U456        filter by comma-separated slack_ids
-    ?presence=active      filter by presence (active | away)
-    ?active_only=true     exclude deactivated users (default: true)
-
-GET /api/v1/admin/users/{slack_id}
-GET /api/v1/admin/users/{slack_id}/presence-history?from=&to=
-GET /api/v1/admin/users/{slack_id}/status-history?from=&to=
-GET /api/v1/admin/users/{slack_id}/duration-summary?from=&to=
-```
-
-### Report Endpoints
-
-```
-GET /api/v1/admin/reports/currently-active
-GET /api/v1/admin/reports/presence-summary?from=&to=
-GET /api/v1/admin/reports/active-hours?from=&to=
-GET /api/v1/admin/reports/availability?from=&to=
-GET /api/v1/admin/reports/dnd-patterns?from=&to=
-GET /api/v1/admin/reports/status-trends?from=&to=&limit=20
-GET /api/v1/admin/reports/inactive-users?days=7
-```
-
-Date parameters are ISO 8601: `2026-05-01T00:00:00` or `2026-05-01`.
-
-### User-Facing Endpoints (JWT)
-
-These require a `Bearer <jwt>` token in the `Authorization` header. The `sub` claim must match an `id` in the `user_mappings` table.
-
-```
-GET /api/v1/me
-GET /api/v1/me/presence-history?from=&to=
-GET /api/v1/me/status-history?from=&to=
-GET /api/v1/me/duration-summary?from=&to=
-```
-
-### Health
-
-```
-GET /api/v1/health   → {"status": "ok", "rtm": "connected"}
-```
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | RTM connection status |
+| `POST` | `/admin/sync/slack-users` | Trigger immediate user sync |
+| `POST` | `/admin/sync/user-mappings` | Trigger immediate mapping sync |
+| `POST` | `/admin/sync/presence` | Trigger presence reconciliation |
+| `GET` | `/admin/sync/status` | Scheduled job next-run times |
+| `GET` | `/admin/events/presence` | SSE stream of real-time presence changes |
+| `GET` | `/admin/users` | List users (`ids`, `presence`, `active_only`) |
+| `GET` | `/admin/users/:slackId` | Get single user |
+| `GET` | `/admin/users/:slackId/presence-history` | Presence history (`from`, `to`) |
+| `GET` | `/admin/users/:slackId/status-history` | Status history (`from`, `to`) |
+| `GET` | `/admin/users/:slackId/duration-summary` | Active/away totals |
+| `GET` | `/admin/reports/currently-active` | Currently active users |
+| `GET` | `/admin/reports/presence-summary` | Per-user availability % |
+| `GET` | `/admin/reports/active-hours` | Day × hour heatmap |
+| `GET` | `/admin/reports/availability` | Availability % per user |
+| `GET` | `/admin/reports/dnd-patterns` | DnD session counts and durations |
+| `GET` | `/admin/reports/status-trends` | Most-used status combos |
+| `GET` | `/admin/reports/inactive-users` | Users inactive for N days |
+| `GET` | `/me` | Authenticated user's own profile |
+| `GET` | `/me/presence-history` | Own presence history |
+| `GET` | `/me/status-history` | Own status history |
+| `GET` | `/me/duration-summary` | Own duration totals |
 
 ---
 
-## Web UI
+## Environment variables reference
 
-Open `http://localhost:8000` in your browser.
-
-You will be prompted for the `API_KEY` you set in `.env`. The key is stored in `localStorage` — click **Sign out** in the sidebar to clear it.
-
-Pages:
-- **Dashboard** — RTM connection status, live active user count, manual sync buttons
-- **Users** — searchable/filterable table of all users with presence indicators
-- **User detail** — presence history timeline chart + event log
-- **Reports** — tabbed analytics: Availability %, Active Hours heatmap, DnD patterns, Status trends
-
----
-
-## JWT Setup
-
-If your identity provider issues RS256 JWTs with a `sub` claim that matches your user management IDs:
-
-1. Get the RSA public key PEM from your IdP
-2. Set it in `.env`:
-   ```
-   JWT_PUBLIC_KEY_PEM="-----BEGIN PUBLIC KEY-----\nMIIBIjANBgk...\n-----END PUBLIC KEY-----"
-   ```
-   (replace actual newlines with `\n`)
-3. Restart the service
-
-The `/me` endpoints will then accept `Authorization: Bearer <token>` requests from users, who can only see their own presence data.
-
----
-
-## Production Notes
-
-- **Reverse proxy**: Put nginx or Caddy in front. Example nginx config:
-  ```nginx
-  server {
-      listen 443 ssl;
-      server_name slack.your-domain.com;
-      location / {
-          proxy_pass http://localhost:8000;
-          proxy_set_header Host $host;
-          proxy_set_header X-Real-IP $remote_addr;
-      }
-  }
-  ```
-- **API key strength**: Use a 32+ character random string: `openssl rand -hex 32`
-- **Backups**: The only stateful component is the postgres volume. Back up with `pg_dump`.
-- **Resource usage**: The RTM WebSocket is a persistent connection. The poller uses ~1 API call per 100ms per active user. For 200 users, one reconciliation sweep takes ~20 seconds.
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SLACK_BOT_TOKEN` | Yes | — | Slack bot token (`xoxb-…`) |
+| `DATABASE_URL` | Yes | — | PostgreSQL connection URL |
+| `API_KEY` | Yes | — | Admin API key for the web UI |
+| `JWT_PUBLIC_KEY_PEM` | No | `""` | RS256 public key for `/me/*` JWT auth |
+| `USER_MGMT_API_URL` | No | `""` | External user management API URL |
+| `USER_MGMT_API_KEY` | No | `""` | Bearer token for user management API |
+| `USER_SYNC_INTERVAL` | No | `30` | Minutes between user syncs |
+| `PRESENCE_RECONCILE_INTERVAL` | No | `5` | Minutes between presence polls |
+| `USER_MAPPING_SYNC_INTERVAL` | No | `60` | Minutes between mapping syncs |
+| `APP_PORT` | No | `8000` | HTTP server port |
+| `POSTGRES_PASSWORD` | No | `rsof_password` | Postgres password (Docker only) |

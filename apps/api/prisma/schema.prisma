@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model SlackUser {
+  slackId            String    @id @map("slack_id")
+  realName           String?   @map("real_name")
+  displayName        String?   @map("display_name")
+  email              String?
+  avatarUrl          String?   @map("avatar_url")
+  isActive           Boolean   @default(true) @map("is_active")
+  currentPresence    String?   @map("current_presence")
+  currentStatusText  String?   @map("current_status_text")
+  currentStatusEmoji String?   @map("current_status_emoji")
+  isBusy             Boolean   @default(false) @map("is_busy")
+  isDnd              Boolean   @default(false) @map("is_dnd")
+  lastPresenceUpdate DateTime? @map("last_presence_update") @db.Timestamptz
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  presenceHistory PresenceHistory[]
+  statusHistory   StatusHistory[]
+  userMapping     UserMapping?
+
+  @@map("slack_users")
+}
+
+model PresenceHistory {
+  id         BigInt   @id @default(autoincrement())
+  slackId    String   @map("slack_id")
+  presence   String
+  source     String
+  recordedAt DateTime @default(now()) @map("recorded_at") @db.Timestamptz
+
+  user SlackUser @relation(fields: [slackId], references: [slackId])
+
+  @@index([slackId, recordedAt], name: "ix_presence_history_slack_id_recorded_at")
+  @@map("presence_history")
+}
+
+model StatusHistory {
+  id          BigInt   @id @default(autoincrement())
+  slackId     String   @map("slack_id")
+  statusText  String?  @map("status_text")
+  statusEmoji String?  @map("status_emoji")
+  isBusy      Boolean  @default(false) @map("is_busy")
+  isDnd       Boolean  @default(false) @map("is_dnd")
+  recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz
+
+  user SlackUser @relation(fields: [slackId], references: [slackId])
+
+  @@index([slackId, recordedAt], name: "ix_status_history_slack_id_recorded_at")
+  @@map("status_history")
+}
+
+model UserMapping {
+  id       String   @id
+  slackId  String   @unique @map("slack_id")
+  syncedAt DateTime @default(now()) @map("synced_at") @db.Timestamptz
+
+  slackUser SlackUser @relation(fields: [slackId], references: [slackId])
+
+  @@map("user_mappings")
+}

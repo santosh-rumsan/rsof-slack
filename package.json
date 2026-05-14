@@ -1,0 +1,30 @@
+{
+  "name": "rsof-slack",
+  "private": true,
+  "packageManager": "pnpm@10.19.0",
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "turbo run dev --filter=api",
+    "dev:web": "turbo run dev --filter=rsof-slack-frontend",
+    "build": "turbo run build",
+    "db:migrate": "turbo run db:migrate --filter=api",
+    "db:push": "turbo run db:push --filter=api",
+    "db:studio": "turbo run db:studio --filter=api",
+    "db:generate": "turbo run db:generate --filter=api"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma"
+    ],
+    "patchedDependencies": {
+      "@slack/rtm-api@5.0.5": "patches/@slack__rtm-api@5.0.5.patch"
+    }
+  }
+}

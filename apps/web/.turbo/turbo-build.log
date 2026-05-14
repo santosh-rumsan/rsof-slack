@@ -1,0 +1,16 @@
+
+
+> rsof-slack-frontend@0.1.0 build /Users/patti/Documents/Projects/rs-office/rsof-slack/apps/web
+> tsc -b && vite build
+
+[36mvite v6.4.2 [32mbuilding for production...[36m[39m
+[2K[1Gtransforming (1) [2msrc/main.tsx[22m[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1Gtransforming (45) [2m../../node_modules/.pnpm/@tanstack+react-route[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1Gtransforming (104) [2msrc/routes/users.tsx[22m[2K[1Gtransforming (109) [2m../../node_modules/.pnpm/@tanstack+router-cor[2K[1Gtransforming (1116) [2m../../node_modules/.pnpm/lucide-react@0.469.[2K[1Gtransforming (1723) [2m../../node_modules/.pnpm/recharts@2.15.4_rea[2K[1Gtransforming (1758) [2m../../node_modules/.pnpm/lodash@4.18.1/node_[2K[1Gtransforming (1963) [2m../../node_modules/.pnpm/recharts@2.15.4_rea[2K[1G[2K[1G[2K[1G[2K[1G[32m✓[39m 2299 modules transformed.
+[2K[1Grendering chunks (1)...[2K[1G[2K[1Gcomputing gzip size (0)...[2K[1Gcomputing gzip size (1)...[2K[1Gcomputing gzip size (2)...[2K[1Gcomputing gzip size (3)...[2K[1G[2mdist/[22m[32mindex.html                 [39m[1m[2m  0.40 kB[22m[1m[22m[2m │ gzip:   0.26 kB[22m
+[2mdist/[22m[2massets/[22m[35mindex-N3h-maXE.css  [39m[1m[2m 14.85 kB[22m[1m[22m[2m │ gzip:   3.59 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-9HBji-qf.js   [39m[1m[33m709.77 kB[39m[22m[2m │ gzip: 207.61 kB[22m
+[33m
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
+[32m✓ built in 1.44s[39m

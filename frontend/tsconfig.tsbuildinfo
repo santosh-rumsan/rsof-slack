@@ -1,1 +1,0 @@
-{"root":["./src/main.tsx","./src/routetree.gen.ts","./src/router.tsx","./src/components/presence-badge.tsx","./src/lib/api.ts","./src/lib/auth.tsx","./src/routes/__root.tsx","./src/routes/activity.tsx","./src/routes/docs.tsx","./src/routes/index.tsx","./src/routes/reports.tsx","./src/routes/users.$slackid.tsx","./src/routes/users.tsx"],"version":"5.7.3"}
