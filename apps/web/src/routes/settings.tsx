@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
 import { admin, type JobStatus, type AppSetting, SETTING_META } from "@/lib/api";
 
 export const Route = createFileRoute("/settings")({
@@ -37,6 +38,7 @@ function SettingsPage() {
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     admin.syncStatus()
@@ -111,13 +113,25 @@ function SettingsPage() {
                     <p className="text-xs text-gray-400 mt-0.5">{meta.description}</p>
                     <p className="text-[10px] text-gray-300 font-mono mt-0.5">{key}</p>
                   </div>
-                  <input
-                    id={key}
-                    type={meta.type === "password" ? "password" : meta.type === "number" ? "number" : "text"}
-                    value={edited[key] ?? ""}
-                    onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
-                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30"
-                  />
+                  <div className="relative">
+                    <input
+                      id={key}
+                      type={meta.type === "password" && !revealed[key] ? "password" : meta.type === "number" ? "number" : "text"}
+                      value={edited[key] ?? ""}
+                      onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
+                      className={`rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30 ${meta.type === "password" ? "pr-8" : ""}`}
+                    />
+                    {meta.type === "password" && (
+                      <button
+                        type="button"
+                        onClick={() => setRevealed((prev) => ({ ...prev, [key]: !prev[key] }))}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                        tabIndex={-1}
+                      >
+                        {revealed[key] ? <EyeOff size={15} /> : <Eye size={15} />}
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

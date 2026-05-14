@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouterState, Link } from "@tanstack/react-router";
 import { usePresence, type ActivityEvent } from "@/lib/presence-context";
 import { PresenceBadge } from "./presence-badge";
-import { renderSlackEmoji } from "@/lib/slack-emoji";
+import { SlackText } from "@/lib/slack-emoji";
 
 interface Toast {
   id: string;
@@ -58,8 +58,8 @@ export function PresenceToaster() {
             </p>
             {event.type === "status" && (event.status_text || event.status_emoji) && (
               <p className="text-xs text-gray-500 truncate">
-                {event.status_emoji ? renderSlackEmoji(event.status_emoji) : ""}{" "}
-                {event.status_text ? renderSlackEmoji(event.status_text) : ""}
+                {event.status_emoji ? <SlackText text={event.status_emoji} /> : null}{" "}
+                {event.status_text ? <SlackText text={event.status_text} /> : null}
               </p>
             )}
           </div>

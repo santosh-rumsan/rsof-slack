@@ -3,13 +3,15 @@ import { GoogleOAuthProvider } from "@react-oauth/google";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { PresenceProvider } from "@/lib/presence-context";
 import { PresenceToaster } from "@/components/presence-toast";
+import { loadEmojiMap } from "@/lib/slack-emoji";
 import { LayoutDashboard, Users, BarChart2, LogOut, Activity, BookOpen, Radio, Settings } from "lucide-react";
-import React from "react";
+import React, { useEffect } from "react";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
 
 function Layout() {
   const { authed, logout } = useAuth();
+  useEffect(() => { if (authed) loadEmojiMap(); }, [authed]);
   if (!authed) return null; // AuthProvider renders LoginScreen when not authed
 
   return (

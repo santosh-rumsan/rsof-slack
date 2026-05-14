@@ -14,6 +14,8 @@ import {
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import type { Response } from 'express';
+import { ConfigService } from '@nestjs/config';
+import { WebClient } from '@slack/web-api';
 import { ApiKeyOrJwtAdminGuard } from '../auth/api-key-or-jwt-admin.guard';
 import { AdminService } from './admin.service';
 import { EventsService } from '../events/events.service';
@@ -26,6 +28,10 @@ import { PresencePollingService } from '../slack/presence-polling.service';
 @Controller('admin')
 @UseGuards(ApiKeyOrJwtAdminGuard)
 export class AdminController {
+  private emojiCache: Record<string, string> | null = null;
+  private emojiCacheAt = 0;
+  private readonly EMOJI_TTL_MS = 60 * 60 * 1000;
+
   constructor(
     private admin: AdminService,
     private events: EventsService,
@@ -34,6 +40,7 @@ export class AdminController {
     private schedulerJobs: SchedulerJobsService,
     private settings: SettingsService,
     private presencePolling: PresencePollingService,
+    private config: ConfigService,
   ) {}
 
   // ─── Settings ────────────────────────────────────────────────────────────
@@ -66,6 +73,22 @@ export class AdminController {
     }
 
     return { updated: body.length };
+  }
+
+  // ─── Emoji ───────────────────────────────────────────────────────────────
+
+  @Get('emoji')
+  async getEmoji() {
+    const now = Date.now();
+    if (this.emojiCache && now - this.emojiCacheAt < this.EMOJI_TTL_MS) {
+      return { emoji: this.emojiCache };
+    }
+    const token = this.config.get<string>('SLACK_BOT_TOKEN');
+    const slack = new WebClient(token);
+    const res = await slack.emoji.list();
+    this.emojiCache = (res.emoji as Record<string, string>) ?? {};
+    this.emojiCacheAt = now;
+    return { emoji: this.emojiCache };
   }
 
   // ─── Sync triggers ───────────────────────────────────────────────────────

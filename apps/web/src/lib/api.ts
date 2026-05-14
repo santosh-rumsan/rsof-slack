@@ -241,6 +241,9 @@ export const admin = {
   },
   inactiveUsers: (days = 7) => request<InactiveUserRow[]>(`/admin/reports/inactive-users?days=${days}`),
 
+  // Emoji
+  getEmoji: () => request<{ emoji: Record<string, string> }>('/admin/emoji'),
+
   // Settings
   getSettings: () => request<AppSetting[]>('/admin/settings'),
   updateSettings: (entries: AppSetting[]) =>

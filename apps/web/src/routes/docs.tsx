@@ -6,7 +6,7 @@ export const Route = createFileRoute("/docs")({
 });
 
 interface Endpoint {
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "PUT";
   path: string;
   description: string;
   auth: "api-key-or-jwt" | "jwt" | "none";
@@ -264,6 +264,27 @@ const sections: { title: string; endpoints: Endpoint[] }[] = [
       },
     ],
   },
+  {
+    title: "Settings",
+    endpoints: [
+      {
+        method: "GET",
+        path: "/admin/settings",
+        auth: "api-key-or-jwt",
+        description: "Get all application settings (including sensitive values). Values are sourced from the database, falling back to environment variables.",
+        curl: `curl ${BASE}/admin/settings ${API_KEY_AUTH}`,
+        example: `[{"key":"WORK_START_HOUR","value":"7"},{"key":"WORK_END_HOUR","value":"23"},{"key":"TIMEZONE","value":"Asia/Kathmandu"}]`,
+      },
+      {
+        method: "PUT",
+        path: "/admin/settings",
+        auth: "api-key-or-jwt",
+        description: "Update one or more application settings. Pass an array of key/value pairs. Only provided keys are updated.",
+        curl: `curl -X PUT ${BASE}/admin/settings ${API_KEY_AUTH} \\\n  -H "Content-Type: application/json" \\\n  -d '[{"key":"WORK_START_HOUR","value":"8"},{"key":"WORK_END_HOUR","value":"18"}]'`,
+        example: `{"updated":2}`,
+      },
+    ],
+  },
 ];
 
 function AuthBadge({ auth }: { auth: Endpoint["auth"] }) {
@@ -281,11 +302,11 @@ function AuthBadge({ auth }: { auth: Endpoint["auth"] }) {
   );
 }
 
-function MethodBadge({ method }: { method: "GET" | "POST" }) {
+function MethodBadge({ method }: { method: "GET" | "POST" | "PUT" }) {
   return (
     <span
       className={`text-xs font-bold px-1.5 py-0.5 rounded font-mono ${
-        method === "GET" ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
+        method === "GET" ? "bg-blue-100 text-blue-700" : method === "PUT" ? "bg-orange-100 text-orange-700" : "bg-green-100 text-green-700"
       }`}
     >
       {method}

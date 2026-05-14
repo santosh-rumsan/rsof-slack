@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { usePresence, type ActivityEvent } from "@/lib/presence-context";
 import { PresenceBadge } from "@/components/presence-badge";
-import { renderSlackEmoji } from "@/lib/slack-emoji";
+import { SlackText } from "@/lib/slack-emoji";
 
 export const Route = createFileRoute("/activity")({
   component: ActivityLog,
@@ -41,14 +41,6 @@ function EventRow({ ev }: { ev: ActivityEvent }) {
     );
   }
 
-  // status event
-  const statusText = ev.status_text
-    ? renderSlackEmoji(ev.status_text)
-    : null;
-  const statusEmoji = ev.status_emoji
-    ? renderSlackEmoji(ev.status_emoji)
-    : null;
-
   return (
     <tr className="hover:bg-gray-50">
       <td className="px-4 py-2 font-mono text-xs text-gray-500 whitespace-nowrap">{fmt(ev.ts)}</td>
@@ -60,7 +52,8 @@ function EventRow({ ev }: { ev: ActivityEvent }) {
       </td>
       <td className="px-4 py-2 text-xs text-gray-400">rtm</td>
       <td className="px-4 py-2 text-xs text-gray-600">
-        {statusEmoji} {statusText ?? <span className="italic text-gray-400">cleared</span>}
+        {ev.status_emoji ? <SlackText text={ev.status_emoji} /> : null}{" "}
+        {ev.status_text ? <SlackText text={ev.status_text} /> : <span className="italic text-gray-400">cleared</span>}
       </td>
     </tr>
   );

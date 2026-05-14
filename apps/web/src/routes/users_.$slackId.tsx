@@ -1,17 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { admin, type SlackUser, type PresenceHistory, type StatusHistory, type DurationSummary } from "@/lib/api";
+import { admin, settings, type SlackUser, type PresenceHistory, type StatusHistory, type DurationSummary } from "@/lib/api";
 import { PresenceBadge } from "@/components/presence-badge";
 import { usePresence } from "@/lib/presence-context";
-import { renderSlackEmoji } from "@/lib/slack-emoji";
+import { renderSlackEmoji, SlackText } from "@/lib/slack-emoji";
 
 export const Route = createFileRoute("/users_/$slackId")({
   component: UserDetailPage,
 });
 
-const WORK_START = parseInt(import.meta.env.VITE_WORK_START_HOUR ?? "7");
-const WORK_END = parseInt(import.meta.env.VITE_WORK_END_HOUR ?? "23");
-const WORK_DURATION_MS = (WORK_END - WORK_START) * 60 * 60 * 1000;
+const ENV_WORK_START = parseInt(import.meta.env.VITE_WORK_START_HOUR ?? "7");
+const ENV_WORK_END = parseInt(import.meta.env.VITE_WORK_END_HOUR ?? "23");
 
 interface Segment {
   startPct: number;
@@ -41,13 +40,16 @@ function buildDaySegments(
   history: PresenceHistory[],
   statusHistory: StatusHistory[],
   date: Date,
+  workStart: number,
+  workEnd: number,
 ): Segment[] {
   const now = Date.now();
+  const workDurationMs = (workEnd - workStart) * 60 * 60 * 1000;
   const y = date.getFullYear();
   const m = date.getMonth();
   const d = date.getDate();
-  const windowStart = new Date(y, m, d, WORK_START, 0, 0, 0).getTime();
-  const rawWindowEnd = new Date(y, m, d, WORK_END, 0, 0, 0).getTime();
+  const windowStart = new Date(y, m, d, workStart, 0, 0, 0).getTime();
+  const rawWindowEnd = new Date(y, m, d, workEnd, 0, 0, 0).getTime();
 
   // Future days: no data
   if (windowStart > now) return [];
@@ -86,8 +88,8 @@ function buildDaySegments(
     if (segEnd > cursor) {
       const { text, emoji } = statusAtTime(statusHistory, cursor);
       segments.push({
-        startPct: ((cursor - windowStart) / WORK_DURATION_MS) * 100,
-        widthPct: ((segEnd - cursor) / WORK_DURATION_MS) * 100,
+        startPct: ((cursor - windowStart) / workDurationMs) * 100,
+        widthPct: ((segEnd - cursor) / workDurationMs) * 100,
         presence: state,
         statusText: text,
         statusEmoji: emoji,
@@ -101,8 +103,8 @@ function buildDaySegments(
   if (cursor < windowEnd) {
     const { text, emoji } = statusAtTime(statusHistory, cursor);
     segments.push({
-      startPct: ((cursor - windowStart) / WORK_DURATION_MS) * 100,
-      widthPct: ((windowEnd - cursor) / WORK_DURATION_MS) * 100,
+      startPct: ((cursor - windowStart) / workDurationMs) * 100,
+      widthPct: ((windowEnd - cursor) / workDurationMs) * 100,
       presence: state,
       statusText: text,
       statusEmoji: emoji,
@@ -121,7 +123,7 @@ function fmtDuration(seconds: number): string {
 function DayLabel({ date }: { date: Date }) {
   const isToday = new Date().toDateString() === date.toDateString();
   return (
-    <span className={`text-xs w-16 flex-shrink-0 ${isToday ? "font-semibold text-gray-800" : "text-gray-400"}`}>
+    <span className={`text-xs w-24 flex-shrink-0 ${isToday ? "font-semibold text-gray-800" : "text-gray-400"}`}>
       {date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
     </span>
   );
@@ -170,6 +172,8 @@ function Timeline({
   statusHistory,
   weekOffset,
   loading,
+  workStart,
+  workEnd,
   onPrev,
   onNext,
 }: {
@@ -177,6 +181,8 @@ function Timeline({
   statusHistory: StatusHistory[];
   weekOffset: number;
   loading: boolean;
+  workStart: number;
+  workEnd: number;
   onPrev: () => void;
   onNext: () => void;
 }) {
@@ -185,7 +191,7 @@ function Timeline({
   const isCurrentWeek = weekOffset === 0;
 
   const hours: number[] = [];
-  for (let h = WORK_START; h <= WORK_END; h += 2) hours.push(h);
+  for (let h = workStart; h <= workEnd; h += 2) hours.push(h);
 
   const weekLabel = `${from.toLocaleDateString([], { month: "short", day: "numeric" })} – ${to.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
 
@@ -197,7 +203,7 @@ function Timeline({
           <span className="text-xs text-gray-400">{weekLabel}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">{WORK_START}:00 – {WORK_END}:00</span>
+          <span className="text-xs text-gray-400">{workStart}:00 – {workEnd}:00</span>
           <button
             onClick={onPrev}
             disabled={loading}
@@ -217,7 +223,7 @@ function Timeline({
 
       <div className="space-y-2">
         {days.map((date, di) => {
-          const segments = buildDaySegments(history, statusHistory, date);
+          const segments = buildDaySegments(history, statusHistory, date, workStart, workEnd);
           return (
             <div key={di} className="flex items-center gap-3">
               <DayLabel date={date} />
@@ -226,7 +232,7 @@ function Timeline({
                   <div
                     key={h}
                     className="absolute top-0 bottom-0 w-px bg-white/60"
-                    style={{ left: `${((h - WORK_START) / (WORK_END - WORK_START)) * 100}%` }}
+                    style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
                   />
                 ))}
                 {segments.map((seg, si) => (
@@ -244,12 +250,12 @@ function Timeline({
       </div>
 
       {/* Hour labels */}
-      <div className="flex ml-[76px]">
+      <div className="flex ml-[96px]">
         {hours.map((h) => (
           <span
             key={h}
             className="text-[10px] text-gray-400 flex-1 text-left"
-            style={{ position: "relative", marginLeft: h === WORK_START ? "0" : undefined }}
+            style={{ position: "relative", marginLeft: h === workStart ? "0" : undefined }}
           >
             {h}
           </span>
@@ -288,6 +294,18 @@ function UserDetailPage() {
   const [weekLoading, setWeekLoading] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
   const { presenceMap } = usePresence();
+
+  const [workStart, setWorkStart] = useState(ENV_WORK_START);
+  const [workEnd, setWorkEnd] = useState(ENV_WORK_END);
+
+  useEffect(() => {
+    settings.getPublic().then((s) => {
+      const start = s.find((x) => x.key === "WORK_START_HOUR");
+      const end = s.find((x) => x.key === "WORK_END_HOUR");
+      if (start) setWorkStart(parseInt(start.value, 10));
+      if (end) setWorkEnd(parseInt(end.value, 10));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const isFirst = !user;
@@ -357,8 +375,8 @@ function UserDetailPage() {
           {user.email && <p className="text-sm text-gray-400">{user.email}</p>}
           {user.current_status_text && (
             <p className="text-sm text-gray-600 mt-1">
-              {user.current_status_emoji ? renderSlackEmoji(user.current_status_emoji) : ""}{" "}
-              {renderSlackEmoji(user.current_status_text)}
+              {user.current_status_emoji ? <SlackText text={user.current_status_emoji} /> : null}{" "}
+              <SlackText text={user.current_status_text} />
             </p>
           )}
         </div>
@@ -375,6 +393,8 @@ function UserDetailPage() {
         statusHistory={sortedStatusHistory}
         weekOffset={weekOffset}
         loading={weekLoading}
+        workStart={workStart}
+        workEnd={workEnd}
         onPrev={() => setWeekOffset((w) => w - 1)}
         onNext={() => setWeekOffset((w) => Math.min(w + 1, 0))}
       />
@@ -411,8 +431,8 @@ function UserDetailPage() {
                       <td className="px-4 py-2 text-gray-600 text-xs">
                         {(text || emoji) ? (
                           <>
-                            {emoji ? renderSlackEmoji(emoji) : ""}{" "}
-                            {text ? renderSlackEmoji(text) : ""}
+                            {emoji ? <SlackText text={emoji} /> : null}{" "}
+                            {text ? <SlackText text={text} /> : null}
                           </>
                         ) : (
                           <span className="text-gray-300">—</span>

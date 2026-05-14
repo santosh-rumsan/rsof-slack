@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { admin, type SlackUser, type PresenceHistory } from "@/lib/api";
+import { admin, settings, type SlackUser, type PresenceHistory } from "@/lib/api";
 import { PresenceBadge } from "@/components/presence-badge";
 import { usePresence } from "@/lib/presence-context";
 
@@ -8,9 +8,8 @@ export const Route = createFileRoute("/presence")({
   component: PresenceOverviewPage,
 });
 
-const WORK_START = parseInt(import.meta.env.VITE_WORK_START_HOUR ?? "7");
-const WORK_END = parseInt(import.meta.env.VITE_WORK_END_HOUR ?? "23");
-const WORK_DURATION_MS = (WORK_END - WORK_START) * 60 * 60 * 1000;
+const ENV_WORK_START = parseInt(import.meta.env.VITE_WORK_START_HOUR ?? "7");
+const ENV_WORK_END = parseInt(import.meta.env.VITE_WORK_END_HOUR ?? "23");
 
 interface Segment {
   startPct: number;
@@ -18,13 +17,19 @@ interface Segment {
   presence: "active" | "away" | "unknown";
 }
 
-function buildDaySegments(history: PresenceHistory[], date: Date): Segment[] {
+function buildDaySegments(
+  history: PresenceHistory[],
+  date: Date,
+  workStart: number,
+  workEnd: number,
+): Segment[] {
   const now = Date.now();
+  const workDurationMs = (workEnd - workStart) * 60 * 60 * 1000;
   const y = date.getFullYear();
   const m = date.getMonth();
   const d = date.getDate();
-  const windowStart = new Date(y, m, d, WORK_START, 0, 0, 0).getTime();
-  const rawWindowEnd = new Date(y, m, d, WORK_END, 0, 0, 0).getTime();
+  const windowStart = new Date(y, m, d, workStart, 0, 0, 0).getTime();
+  const rawWindowEnd = new Date(y, m, d, workEnd, 0, 0, 0).getTime();
 
   if (windowStart > now) return [];
 
@@ -58,8 +63,8 @@ function buildDaySegments(history: PresenceHistory[], date: Date): Segment[] {
     const segEnd = Math.min(evMs, windowEnd);
     if (segEnd > cursor) {
       segments.push({
-        startPct: ((cursor - windowStart) / WORK_DURATION_MS) * 100,
-        widthPct: ((segEnd - cursor) / WORK_DURATION_MS) * 100,
+        startPct: ((cursor - windowStart) / workDurationMs) * 100,
+        widthPct: ((segEnd - cursor) / workDurationMs) * 100,
         presence: state,
       });
     }
@@ -70,8 +75,8 @@ function buildDaySegments(history: PresenceHistory[], date: Date): Segment[] {
 
   if (cursor < windowEnd) {
     segments.push({
-      startPct: ((cursor - windowStart) / WORK_DURATION_MS) * 100,
-      widthPct: ((windowEnd - cursor) / WORK_DURATION_MS) * 100,
+      startPct: ((cursor - windowStart) / workDurationMs) * 100,
+      widthPct: ((windowEnd - cursor) / workDurationMs) * 100,
       presence: state,
     });
   }
@@ -79,14 +84,33 @@ function buildDaySegments(history: PresenceHistory[], date: Date): Segment[] {
   return segments;
 }
 
+function computeDayDuration(
+  segments: Segment[],
+  workStart: number,
+  workEnd: number,
+): { activeSec: number; awaySec: number } {
+  const workDurationSec = (workEnd - workStart) * 3600;
+  let activeSec = 0;
+  let awaySec = 0;
+  for (const seg of segments) {
+    const sec = (seg.widthPct / 100) * workDurationSec;
+    if (seg.presence === "active") activeSec += sec;
+    else if (seg.presence === "away") awaySec += sec;
+  }
+  return { activeSec, awaySec };
+}
+
+function fmtDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
+  return `${(seconds / 3600).toFixed(1)}h`;
+}
+
 function segmentColor(presence: "active" | "away" | "unknown") {
   if (presence === "active") return "bg-green-400";
   if (presence === "away") return "bg-gray-200";
   return "bg-gray-100";
 }
-
-const HOURS: number[] = [];
-for (let h = WORK_START; h <= WORK_END; h += 2) HOURS.push(h);
 
 function PresenceOverviewPage() {
   const today = useMemo(() => {
@@ -100,6 +124,24 @@ function PresenceOverviewPage() {
   const [historyMap, setHistoryMap] = useState<Record<string, PresenceHistory[]>>({});
   const [loading, setLoading] = useState(true);
   const { presenceMap } = usePresence();
+
+  const [workStart, setWorkStart] = useState(ENV_WORK_START);
+  const [workEnd, setWorkEnd] = useState(ENV_WORK_END);
+
+  useEffect(() => {
+    settings.getPublic().then((s) => {
+      const start = s.find((x) => x.key === "WORK_START_HOUR");
+      const end = s.find((x) => x.key === "WORK_END_HOUR");
+      if (start) setWorkStart(parseInt(start.value, 10));
+      if (end) setWorkEnd(parseInt(end.value, 10));
+    }).catch(() => {});
+  }, []);
+
+  const hours = useMemo(() => {
+    const h: number[] = [];
+    for (let i = workStart; i <= workEnd; i += 2) h.push(i);
+    return h;
+  }, [workStart, workEnd]);
 
   useEffect(() => {
     load(selectedDate);
@@ -181,21 +223,34 @@ function PresenceOverviewPage() {
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (
         <div className="rounded-xl border bg-white p-4">
-          {/* Hour labels */}
-          <div className="flex mb-2 ml-[200px]">
-            {HOURS.map((h) => (
-              <span key={h} className="text-[10px] text-gray-400 flex-1">
-                {h}:00
-              </span>
-            ))}
+          {/* Header row */}
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-[192px] flex-shrink-0" />
+            <div className="relative flex-1 ml-0">
+              <div className="flex">
+                {hours.map((h) => (
+                  <span key={h} className="text-[10px] text-gray-400 flex-1">
+                    {h}:00
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 flex-shrink-0 w-[180px]">
+              <span className="text-[10px] text-gray-400 w-14 text-right">Active</span>
+              <span className="text-[10px] text-gray-400 w-14 text-right">Away</span>
+              <span className="text-[10px] text-gray-400 w-14 text-right">Active %</span>
+            </div>
           </div>
 
           {/* User rows */}
           <div className="space-y-1">
             {sortedUsers.map((user) => {
               const history = historyMap[user.slack_id] ?? [];
-              const segments = buildDaySegments(history, selectedDate);
+              const segments = buildDaySegments(history, selectedDate, workStart, workEnd);
               const livePresence = presenceMap[user.slack_id] ?? user.current_presence;
+              const { activeSec, awaySec } = computeDayDuration(segments, workStart, workEnd);
+              const total = activeSec + awaySec;
+              const activePct = total > 0 ? `${((activeSec / total) * 100).toFixed(0)}%` : "—";
 
               return (
                 <div key={user.slack_id} className="flex items-center gap-3">
@@ -223,11 +278,11 @@ function PresenceOverviewPage() {
 
                   <div className="relative flex-1 h-6 bg-gray-100 rounded overflow-hidden">
                     {/* Hour grid lines */}
-                    {HOURS.slice(1, -1).map((h) => (
+                    {hours.slice(1, -1).map((h) => (
                       <div
                         key={h}
                         className="absolute top-0 bottom-0 w-px bg-white/60"
-                        style={{ left: `${((h - WORK_START) / (WORK_END - WORK_START)) * 100}%` }}
+                        style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
                       />
                     ))}
                     {segments.map((seg, si) => (
@@ -238,6 +293,18 @@ function PresenceOverviewPage() {
                         title={seg.presence}
                       />
                     ))}
+                  </div>
+
+                  <div className="flex gap-2 flex-shrink-0 w-[180px]">
+                    <span className="text-xs text-green-600 w-14 text-right font-mono">
+                      {activeSec > 0 ? fmtDuration(activeSec) : "—"}
+                    </span>
+                    <span className="text-xs text-gray-400 w-14 text-right font-mono">
+                      {awaySec > 0 ? fmtDuration(awaySec) : "—"}
+                    </span>
+                    <span className="text-xs text-gray-700 w-14 text-right font-mono font-medium">
+                      {activePct}
+                    </span>
                   </div>
                 </div>
               );
@@ -255,6 +322,7 @@ function PresenceOverviewPage() {
             <span className="flex items-center gap-1.5">
               <span className="h-3 w-3 rounded-sm bg-gray-100 border" /> No data
             </span>
+            <span className="ml-auto text-gray-300">{workStart}:00 – {workEnd}:00</span>
           </div>
         </div>
       )}
