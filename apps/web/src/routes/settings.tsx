@@ -157,6 +157,15 @@ function SettingsPage() {
                           <option key={tz} value={tz}>{tz}</option>
                         ))}
                       </select>
+                    ) : meta.type === "textarea" ? (
+                      <textarea
+                        id={key}
+                        value={edited[key] ?? ""}
+                        onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
+                        rows={4}
+                        placeholder="One timezone per line, e.g. Asia/Kathmandu"
+                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30 font-mono resize-y"
+                      />
                     ) : meta.type === "time" ? (
                       <input
                         id={key}

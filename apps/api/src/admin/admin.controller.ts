@@ -8,6 +8,7 @@ import {
   Query,
   Res,
   NotFoundException,
+  BadRequestException,
   UseGuards,
   Sse,
   MessageEvent,
@@ -168,6 +169,18 @@ export class AdminController {
     const user = await this.admin.getUser(slackId);
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  @Put('users/:slackId/timezone')
+  async updateUserTimezone(
+    @Param('slackId') slackId: string,
+    @Body() body: { timezone: string | null },
+  ) {
+    try {
+      return await this.admin.updateUserTimezone(slackId, body.timezone ?? null);
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
   }
 
   @Get('users/:slackId/presence-history')

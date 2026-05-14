@@ -18,6 +18,8 @@ model SlackUser {
   currentStatusText  String?   @map("current_status_text")
   currentStatusEmoji String?   @map("current_status_emoji")
   lastPresenceUpdate DateTime? @map("last_presence_update") @db.Timestamptz
+  lastActiveAt       DateTime? @map("last_active_at") @db.Timestamptz
+  timezone           String?   @map("timezone")
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -55,10 +57,9 @@ model StatusHistory {
 }
 
 model UserMapping {
-  id           String   @id
-  slackId      String   @unique @map("slack_id")
-  userTimezone String?  @map("user_timezone")
-  syncedAt     DateTime @default(now()) @map("synced_at") @db.Timestamptz
+  id       String   @id
+  slackId  String   @unique @map("slack_id")
+  syncedAt DateTime @default(now()) @map("synced_at") @db.Timestamptz
 
   slackUser SlackUser @relation(fields: [slackId], references: [slackId])
 

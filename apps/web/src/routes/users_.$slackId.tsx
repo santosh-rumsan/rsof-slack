@@ -465,6 +465,92 @@ function Timeline({
   );
 }
 
+function fmtIdleDuration(lastActiveAt: string): string {
+  const ms = Date.now() - new Date(lastActiveAt).getTime();
+  const secs = Math.floor(ms / 1000);
+  if (secs < 60) return `${secs}s`;
+  if (secs < 3600) return `${Math.floor(secs / 60)}m`;
+  if (secs < 86400) return `${(secs / 3600).toFixed(1)}h`;
+  return `${Math.floor(secs / 86400)}d ${Math.floor((secs % 86400) / 3600)}h`;
+}
+
+function TimezoneEditor({
+  slackId,
+  timezone,
+  availableTimezones,
+  onSaved,
+}: {
+  slackId: string;
+  timezone: string | null;
+  availableTimezones: string[];
+  onSaved: (tz: string | null) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(timezone ?? availableTimezones[0] ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const options = timezone && !availableTimezones.includes(timezone)
+    ? [timezone, ...availableTimezones]
+    : availableTimezones;
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await admin.updateUserTimezone(slackId, value || null);
+      onSaved(result.timezone);
+      setEditing(false);
+    } catch (e: any) {
+      setError(e.message ?? "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => { setValue(timezone ?? availableTimezones[0] ?? ""); setEditing(true); setError(null); }}
+        className="text-xs text-gray-400 hover:text-brand underline-offset-2 hover:underline"
+      >
+        {timezone ? `${timezone} · ` : "Set timezone"}
+        {timezone && <UserLocalClock timezone={timezone} />}
+        {timezone && <span className="ml-1 text-gray-300">(edit)</span>}
+      </button>
+    );
+  }
+
+  return (
+    <span className="flex items-center gap-1 flex-wrap">
+      <select
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="text-xs border rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-brand"
+        disabled={saving}
+      >
+        {options.map((tz) => (
+          <option key={tz} value={tz}>{tz}</option>
+        ))}
+      </select>
+      <button
+        onClick={save}
+        disabled={saving}
+        className="text-xs text-brand font-medium hover:underline disabled:opacity-50"
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
+      <button
+        onClick={() => setEditing(false)}
+        className="text-xs text-gray-400 hover:text-gray-600"
+      >
+        Cancel
+      </button>
+      {error && <span className="text-xs text-red-500">{error}</span>}
+    </span>
+  );
+}
+
 /** Find what status was active at a given ISO timestamp from a sorted-ascending status history. */
 function statusAtTimestamp(statusHistory: StatusHistory[], iso: string): { text: string | null; emoji: string | null } {
   const ts = new Date(iso).getTime();
@@ -474,6 +560,7 @@ function statusAtTimestamp(statusHistory: StatusHistory[], iso: string): { text:
 function UserDetailPage() {
   const { slackId } = Route.useParams();
   const [user, setUser] = useState<SlackUser | null>(null);
+  const [timezone, setTimezone] = useState<string | null>(null);
   const [history, setHistory] = useState<PresenceHistory[]>([]);
   const [statusHistory, setStatusHistory] = useState<StatusHistory[]>([]);
   const [duration, setDuration] = useState<DurationSummary | null>(null);
@@ -485,12 +572,19 @@ function UserDetailPage() {
   const [workStart, setWorkStart] = useState(ENV_WORK_START);
   const [workEnd, setWorkEnd] = useState(ENV_WORK_END);
 
+  const [availableTimezones, setAvailableTimezones] = useState<string[]>(["Asia/Kathmandu"]);
+
   useEffect(() => {
     settings.getPublic().then((s) => {
       const start = s.find((x) => x.key === "WORK_START_HOUR");
       const end = s.find((x) => x.key === "WORK_END_HOUR");
       if (start) setWorkStart(parseFloat(start.value));
       if (end) setWorkEnd(parseFloat(end.value));
+      const tzSetting = s.find((x) => x.key === "AVAILABLE_TIMEZONES");
+      if (tzSetting) {
+        const list = tzSetting.value.split("\n").map((t) => t.trim()).filter(Boolean);
+        if (list.length > 0) setAvailableTimezones(list);
+      }
     }).catch(() => {});
   }, []);
 
@@ -510,6 +604,7 @@ function UserDetailPage() {
     ])
       .then(([u, h, sh, d]) => {
         setUser(u);
+        setTimezone(u.timezone);
         setHistory(h);
         setStatusHistory(sh);
         setDuration(d);
@@ -526,6 +621,19 @@ function UserDetailPage() {
 
   // Live presence from SSE overrides DB value if available
   const livePresence = presenceMap[user.slack_id] ?? user.current_presence;
+
+  // Find when the current presence state began (earliest record in trailing same-state run)
+  const lastHistoryRecord = (() => {
+    if (history.length === 0) return null;
+    const sorted = [...history].sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime());
+    const last = sorted[sorted.length - 1];
+    let stateStart = last;
+    for (let i = sorted.length - 2; i >= 0; i--) {
+      if (sorted[i].presence !== last.presence) break;
+      stateStart = sorted[i];
+    }
+    return stateStart;
+  })();
 
   const activeSec = duration?.durations.find((d) => d.presence === "active")?.total_seconds ?? 0;
   const awaySec = duration?.durations.find((d) => d.presence === "away")?.total_seconds ?? 0;
@@ -561,11 +669,14 @@ function UserDetailPage() {
               <PresenceBadge presence={livePresence} showLabel />
             </div>
             {user.email && <p className="text-sm text-gray-400">{user.email}</p>}
-            {user.timezone && (
-              <p className="text-xs text-gray-400 mt-0.5">
-                {user.timezone} · <UserLocalClock timezone={user.timezone} />
-              </p>
-            )}
+            <p className="text-xs text-gray-400 mt-0.5">
+              <TimezoneEditor
+                slackId={user.slack_id}
+                timezone={timezone}
+                availableTimezones={availableTimezones}
+                onSaved={(tz) => setTimezone(tz)}
+              />
+            </p>
             {user.current_status_text && (
               <p className="text-sm text-gray-600 mt-1">
                 {user.current_status_emoji ? <SlackText text={user.current_status_emoji} /> : null}{" "}
@@ -577,7 +688,36 @@ function UserDetailPage() {
         <div className="sm:text-right">
           <p className="text-xs text-gray-400">Availability (week)</p>
           <p className="text-2xl font-bold text-brand">{availPct}%</p>
-          <p className="text-xs text-gray-400">Active {fmtDuration(activeSec)}</p>
+          {(lastHistoryRecord || user.last_active_at) && (
+            <p className="text-xs mt-0.5 flex sm:flex-col sm:items-end items-center gap-1 flex-wrap">
+              {lastHistoryRecord ? (
+                lastHistoryRecord.presence === "active" ? (
+                  <span className="text-green-600">
+                    Active for {fmtIdleDuration(lastHistoryRecord.recorded_at)}
+                  </span>
+                ) : (
+                  <span className="text-amber-500">
+                    Idle for {fmtIdleDuration(lastHistoryRecord.recorded_at)}
+                  </span>
+                )
+              ) : livePresence === "away" ? (
+                <span className="text-amber-500">
+                  Idle {fmtIdleDuration(user.last_active_at!)}
+                </span>
+              ) : null}
+              {user.last_active_at && (
+                <span className="text-gray-400">
+                  last active{" "}
+                  {new Date(user.last_active_at).toLocaleTimeString(undefined, {
+                    ...(timezone ? { timeZone: timezone } : {}),
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                  {timezone && ` ${getShortTzAbbr(timezone)}`}
+                </span>
+              )}
+            </p>
+          )}
         </div>
       </div>
 
@@ -589,7 +729,7 @@ function UserDetailPage() {
         loading={weekLoading}
         workStart={workStart}
         workEnd={workEnd}
-        timezone={user.timezone}
+        timezone={timezone}
         onPrev={() => setWeekOffset((w) => w - 1)}
         onNext={() => setWeekOffset((w) => Math.min(w + 1, 0))}
       />
@@ -605,12 +745,12 @@ function UserDetailPage() {
               <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                 <tr>
                   <th className="px-4 py-2 text-left">
-                  Time{user.timezone && (
-                    <span className="text-gray-300 normal-case font-normal ml-1">
-                      ({getShortTzAbbr(user.timezone)})
-                    </span>
-                  )}
-                </th>
+                    Time{timezone && (
+                      <span className="text-gray-300 normal-case font-normal ml-1">
+                        ({getShortTzAbbr(timezone)})
+                      </span>
+                    )}
+                  </th>
                   <th className="px-4 py-2 text-left">Presence</th>
                   <th className="px-4 py-2 text-left">Status at event</th>
                   <th className="px-4 py-2 text-left">Source</th>
@@ -626,7 +766,7 @@ function UserDetailPage() {
                       <tr key={h.id}>
                         <td className="px-4 py-2 text-gray-500">
                           {new Date(h.recorded_at).toLocaleString(undefined, {
-                            ...(user.timezone ? { timeZone: user.timezone } : {}),
+                            ...(timezone ? { timeZone: timezone } : {}),
                             month: "short",
                             day: "numeric",
                             hour: "2-digit",

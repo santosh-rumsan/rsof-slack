@@ -114,15 +114,19 @@ export class SlackSyncService {
         const resp: any = await this.webClient.users.getPresence({ user: user.slackId });
         const presence: string = resp.presence;
 
-        if (presence && presence !== user.currentPresence) {
+        if (presence) {
           const fullUser = await this.prisma.slackUser.findUnique({
             where: { slackId: user.slackId },
           });
-          if (fullUser) {
+          if (fullUser && presence !== fullUser.currentPresence) {
             await this.prisma.$transaction([
               this.prisma.slackUser.update({
                 where: { slackId: user.slackId },
-                data: { currentPresence: presence, lastPresenceUpdate: new Date() },
+                data: {
+                  currentPresence: presence,
+                  lastPresenceUpdate: new Date(),
+                  ...(presence === 'active' ? { lastActiveAt: new Date() } : {}),
+                },
               }),
               this.prisma.presenceHistory.create({
                 data: { slackId: user.slackId, presence, source: 'poll' },

@@ -41,6 +41,16 @@ export class AdminService {
     return user ? mapUser(user) : null;
   }
 
+  async updateUserTimezone(slackId: string, timezone: string | null) {
+    const tz = timezone ? safeTimezone(timezone, null) : null;
+    if (timezone && !tz) throw new Error(`Invalid timezone: ${timezone}`);
+    await this.prisma.slackUser.update({
+      where: { slackId },
+      data: { timezone: tz },
+    });
+    return { slack_id: slackId, timezone: tz };
+  }
+
   async getPresenceHistory(slackId: string, from?: Date, to?: Date) {
     const where: Prisma.PresenceHistoryWhereInput = { slackId };
     if (from) where.recordedAt = { ...((where.recordedAt as any) || {}), gte: from };
@@ -79,11 +89,11 @@ export class AdminService {
 
   async getDurationSummary(slackId: string, from?: Date, to?: Date) {
     // Use per-user timezone if available, fall back to global setting
-    const mapping = await this.prisma.userMapping.findUnique({
+    const slackUser = await this.prisma.slackUser.findUnique({
       where: { slackId },
-      select: { userTimezone: true },
+      select: { timezone: true },
     });
-    const rawTz = mapping?.userTimezone ?? this.settings.get('TIMEZONE', 'UTC');
+    const rawTz = slackUser?.timezone ?? this.settings.get('TIMEZONE', 'UTC');
     const timezone = safeTimezone(rawTz, this.settings.get('TIMEZONE', 'UTC'));
     const workStart = this.settings.getNumber('WORK_START_HOUR', 0);
     const workEnd = this.settings.getNumber('WORK_END_HOUR', 24);
@@ -244,7 +254,9 @@ export class AdminService {
 
 // ─── Mapper ────────────────────────────────────────────────────────────────
 
-function safeTimezone(tz: string | null | undefined, fallback: string): string {
+function safeTimezone(tz: string | null | undefined, fallback: string): string;
+function safeTimezone(tz: string | null | undefined, fallback: null): string | null;
+function safeTimezone(tz: string | null | undefined, fallback: string | null): string | null {
   if (!tz) return fallback;
   try {
     new Intl.DateTimeFormat('en', { timeZone: tz });
@@ -266,8 +278,9 @@ function mapUser(u: any) {
     current_status_text: u.currentStatusText,
     current_status_emoji: u.currentStatusEmoji,
     last_presence_update: u.lastPresenceUpdate,
+    last_active_at: u.lastActiveAt,
     created_at: u.createdAt,
     updated_at: u.updatedAt,
-    timezone: u.userMapping?.userTimezone ?? null,
+    timezone: u.timezone ?? null,
   };
 }

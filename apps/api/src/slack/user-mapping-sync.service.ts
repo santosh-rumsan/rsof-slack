@@ -68,11 +68,19 @@ export class UserMappingSyncService {
         continue;
       }
 
-      await this.prisma.userMapping.upsert({
-        where: { id: internalId },
-        create: { id: internalId, slackId, userTimezone, syncedAt: now },
-        update: { slackId, userTimezone, syncedAt: now },
-      });
+      await this.prisma.$transaction([
+        this.prisma.userMapping.upsert({
+          where: { id: internalId },
+          create: { id: internalId, slackId, syncedAt: now },
+          update: { slackId, syncedAt: now },
+        }),
+        ...(userTimezone
+          ? [this.prisma.slackUser.update({
+              where: { slackId },
+              data: { timezone: userTimezone },
+            })]
+          : []),
+      ]);
       emit(`Synced: ${internalId} → ${slackId}`);
       synced++;
     }

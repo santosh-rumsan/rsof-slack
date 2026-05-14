@@ -158,7 +158,11 @@ export class RtmService implements OnApplicationShutdown {
     await this.prisma.$transaction([
       this.prisma.slackUser.update({
         where: { slackId },
-        data: { currentPresence: presence, lastPresenceUpdate: new Date() },
+        data: {
+          currentPresence: presence,
+          lastPresenceUpdate: new Date(),
+          ...(presence === 'active' ? { lastActiveAt: new Date() } : {}),
+        },
       }),
       this.prisma.presenceHistory.create({
         data: { slackId, presence, source },

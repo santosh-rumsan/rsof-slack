@@ -12,8 +12,6 @@ dist/
 # DB
 *.db
 
-# Prisma
-apps/api/prisma/migrations/
 
 # Build artifacts
 apps/web/dist/

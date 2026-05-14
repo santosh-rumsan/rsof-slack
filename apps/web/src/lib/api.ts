@@ -53,6 +53,7 @@ export interface SlackUser {
   current_status_text: string | null;
   current_status_emoji: string | null;
   last_presence_update: string | null;
+  last_active_at: string | null;
   created_at: string;
   updated_at: string;
   timezone: string | null;
@@ -150,7 +151,7 @@ export interface AppSetting {
 }
 
 // Human-readable metadata for each setting key
-export const SETTING_META: Record<string, { label: string; description: string; type: 'text' | 'number' | 'password' | 'time' | 'timezone'; step?: number }> = {
+export const SETTING_META: Record<string, { label: string; description: string; type: 'text' | 'number' | 'password' | 'time' | 'timezone' | 'textarea'; step?: number }> = {
   USER_MGMT_API_URL:           { label: 'User Mgmt API URL',         description: 'External user management API endpoint',                type: 'text' },
   USER_MGMT_API_KEY:           { label: 'User Mgmt API Key',         description: 'Bearer token for the user management API',             type: 'password' },
   USER_SYNC_INTERVAL:          { label: 'User Sync Interval (min)',  description: 'How often to sync Slack users (minutes)',              type: 'number' },
@@ -158,6 +159,7 @@ export const SETTING_META: Record<string, { label: string; description: string; 
   USER_MAPPING_SYNC_INTERVAL:  { label: 'User Mapping Sync (min)',  description: 'How often to sync user mappings (minutes)',            type: 'number' },
   API_KEY:                     { label: 'Admin API Key',             description: 'Secret key for admin API access',                     type: 'password' },
   TIMEZONE:                    { label: 'Timezone',                  description: 'Timezone for report calculations',                    type: 'timezone' },
+  AVAILABLE_TIMEZONES:         { label: 'Available Timezones',       description: 'Newline-separated list of timezones for user timezone dropdown', type: 'textarea' },
   WORK_START_HOUR:             { label: 'Work Start Time',           description: 'Start of work day (stored as decimal hours)',         type: 'time' },
   WORK_END_HOUR:               { label: 'Work End Time',             description: 'End of work day (stored as decimal hours)',           type: 'time' },
 };
@@ -192,6 +194,12 @@ export const admin = {
   },
 
   getUser: (slackId: string) => request<SlackUser>(`/admin/users/${slackId}`),
+
+  updateUserTimezone: (slackId: string, timezone: string | null) =>
+    request<{ slack_id: string; timezone: string | null }>(`/admin/users/${slackId}/timezone`, {
+      method: "PUT",
+      body: JSON.stringify({ timezone }),
+    }),
 
   getUserPresenceHistory: (slackId: string, from?: string, to?: string) => {
     const qs = new URLSearchParams();

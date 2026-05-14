@@ -14,6 +14,7 @@ const ENV_KEYS: { key: string; envKey: string; defaultValue: string }[] = [
   { key: 'USER_MAPPING_SYNC_INTERVAL', envKey: 'USER_MAPPING_SYNC_INTERVAL', defaultValue: '60' },
   { key: 'API_KEY',                    envKey: 'API_KEY',                    defaultValue: 'change-me-to-a-strong-random-string' },
   { key: 'TIMEZONE',                   envKey: 'TIMEZONE',                   defaultValue: 'Asia/Kathmandu' },
+  { key: 'AVAILABLE_TIMEZONES',        envKey: 'AVAILABLE_TIMEZONES',        defaultValue: 'Asia/Kathmandu' },
   { key: 'WORK_START_HOUR',            envKey: 'VITE_WORK_START_HOUR',       defaultValue: '7' },
   { key: 'WORK_END_HOUR',              envKey: 'VITE_WORK_END_HOUR',         defaultValue: '23' },
 ];
