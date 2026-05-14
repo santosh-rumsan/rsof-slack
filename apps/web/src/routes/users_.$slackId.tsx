@@ -120,6 +120,22 @@ function fmtDuration(seconds: number): string {
   return `${(seconds / 3600).toFixed(1)}h`;
 }
 
+function computeDayDuration(
+  segments: Segment[],
+  workStart: number,
+  workEnd: number,
+): { activeSec: number; awaySec: number } {
+  const workDurationSec = (workEnd - workStart) * 3600;
+  let activeSec = 0;
+  let awaySec = 0;
+  for (const seg of segments) {
+    const sec = (seg.widthPct / 100) * workDurationSec;
+    if (seg.presence === "active") activeSec += sec;
+    else if (seg.presence === "away") awaySec += sec;
+  }
+  return { activeSec, awaySec };
+}
+
 function DayLabel({ date }: { date: Date }) {
   const isToday = new Date().toDateString() === date.toDateString();
   return (
@@ -221,9 +237,22 @@ function Timeline({
         </div>
       </div>
 
+      <div className="flex items-center gap-3 mb-1">
+        <span className="w-24 flex-shrink-0" />
+        <div className="flex-1" />
+        <div className="flex gap-2 flex-shrink-0 w-[180px]">
+          <span className="text-[10px] text-gray-400 w-14 text-right">Active</span>
+          <span className="text-[10px] text-gray-400 w-14 text-right">Away</span>
+          <span className="text-[10px] text-gray-400 w-14 text-right">Active %</span>
+        </div>
+      </div>
+
       <div className="space-y-2">
         {days.map((date, di) => {
           const segments = buildDaySegments(history, statusHistory, date, workStart, workEnd);
+          const { activeSec, awaySec } = computeDayDuration(segments, workStart, workEnd);
+          const total = activeSec + awaySec;
+          const activePct = total > 0 ? `${((activeSec / total) * 100).toFixed(0)}%` : "—";
           return (
             <div key={di} className="flex items-center gap-3">
               <DayLabel date={date} />
@@ -243,6 +272,17 @@ function Timeline({
                     title={buildTooltip(seg)}
                   />
                 ))}
+              </div>
+              <div className="flex gap-2 flex-shrink-0 w-[180px]">
+                <span className="text-xs text-green-600 w-14 text-right font-mono">
+                  {activeSec > 0 ? fmtDuration(activeSec) : "—"}
+                </span>
+                <span className="text-xs text-gray-400 w-14 text-right font-mono">
+                  {awaySec > 0 ? fmtDuration(awaySec) : "—"}
+                </span>
+                <span className="text-xs text-gray-700 w-14 text-right font-mono font-medium">
+                  {activePct}
+                </span>
               </div>
             </div>
           );

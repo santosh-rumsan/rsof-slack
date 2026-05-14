@@ -16,10 +16,15 @@ services:
       start_period: 10s
 
   app:
-    build: .
+    image: rumsan/rsof-slack
+    build:
+      context: .
+      platforms:
+        - linux/amd64
+        - linux/arm64
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-8000}:8000"
+      - "${HOST_PORT:-3000}:8000"
     env_file: .env
     environment:
       DATABASE_URL: postgresql://rsof:${POSTGRES_PASSWORD:-rsof_password}@postgres:5432/rsof_slack
@@ -29,3 +34,6 @@ services:
 
 volumes:
   postgres_data:
+
+  # docker buildx create --use
+  # docker buildx build --platform linux/amd64,linux/arm64 -t rumsan/rsof-slack:latest --push .

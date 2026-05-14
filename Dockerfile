@@ -1,5 +1,5 @@
 # ── Stage 1: Build frontend ───────────────────────────────────────────────
-FROM node:20-alpine AS frontend-builder
+FROM node:20-slim AS frontend-builder
 
 WORKDIR /build/apps/web
 COPY apps/web/package.json ./
@@ -8,9 +8,9 @@ COPY apps/web/ .
 RUN npm run build
 
 # ── Stage 2: Build NestJS API ─────────────────────────────────────────────
-FROM node:20-alpine AS api-builder
+FROM node:20-slim AS api-builder
 
-RUN apk add --no-cache openssl
+RUN apt-get update && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build/apps/api
 COPY apps/api/package.json apps/api/package-lock.json* ./
@@ -20,9 +20,9 @@ RUN npx prisma generate
 RUN npm run build
 
 # ── Stage 3: Production runtime ───────────────────────────────────────────
-FROM node:20-alpine
+FROM node:20-slim
 
-RUN apk add --no-cache curl openssl
+RUN apt-get update && apt-get install -y curl openssl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
