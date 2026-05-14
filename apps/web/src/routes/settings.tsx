@@ -106,7 +106,7 @@ function SettingsPage() {
   const unknownKeys = appSettings.filter((s) => !SETTING_META[s.key]);
 
   return (
-    <div className="p-6 space-y-8">
+    <div className="p-4 sm:p-6 space-y-8">
       <h1 className="text-2xl font-semibold">Settings</h1>
 
       {/* ── App Settings ─────────────────────────────────────────────────── */}
@@ -125,7 +125,7 @@ function SettingsPage() {
             {knownKeys.map(({ key }) => {
               const meta = SETTING_META[key];
               return (
-                <div key={key} className="px-4 py-4 grid grid-cols-[1fr_2fr] gap-4 items-start">
+                <div key={key} className="px-4 py-4 grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-3 sm:gap-4 items-start">
                   <div>
                     <label className="block text-sm font-medium text-gray-800" htmlFor={key}>
                       {meta.label}
@@ -187,7 +187,7 @@ function SettingsPage() {
                   <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Other</p>
                 </div>
                 {unknownKeys.map(({ key }) => (
-                  <div key={key} className="px-4 py-3 grid grid-cols-[1fr_2fr] gap-4 items-center">
+                  <div key={key} className="px-4 py-3 grid grid-cols-1 sm:grid-cols-[1fr_2fr] gap-3 sm:gap-4 items-center">
                     <label className="text-sm font-mono text-gray-600" htmlFor={key}>{key}</label>
                     <input
                       id={key}
@@ -236,7 +236,7 @@ function SettingsPage() {
           <div className="divide-y">
             {jobs.map((job) => (
               <div key={job.job_id} className="px-4 py-4 space-y-1.5">
-                <div className="flex items-center justify-between gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-sm text-gray-800">
                       {JOB_LABELS[job.job_id] ?? job.job_id}
@@ -246,7 +246,7 @@ function SettingsPage() {
                     </span>
                   </div>
                   {(job.last_run || job.next_run) && (
-                    <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs text-gray-500">
                       {job.last_run && (
                         <span>
                           <span className="text-gray-400">Last run: </span>

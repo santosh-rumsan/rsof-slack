@@ -148,10 +148,16 @@ function computeDayDuration(
 
 function DayLabel({ date }: { date: Date }) {
   const isToday = new Date().toDateString() === date.toDateString();
+  const cls = `text-xs flex-shrink-0 ${isToday ? "font-semibold text-gray-800" : "text-gray-400"}`;
   return (
-    <span className={`text-xs w-24 flex-shrink-0 ${isToday ? "font-semibold text-gray-800" : "text-gray-400"}`}>
-      {date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
-    </span>
+    <>
+      <span className={`${cls} w-8 sm:hidden`}>
+        {date.toLocaleDateString([], { weekday: "short" })}
+      </span>
+      <span className={`${cls} w-24 hidden sm:inline`}>
+        {date.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" })}
+      </span>
+    </>
   );
 }
 
@@ -336,16 +342,16 @@ function Timeline({
       </div>
 
       <div className="flex items-center gap-3 mb-1">
-        <span className="w-24 flex-shrink-0" />
+        <span className="w-8 sm:w-24 flex-shrink-0" />
         <div className="flex-1" />
-        <div className="flex gap-2 flex-shrink-0 w-[180px]">
+        <div className="flex gap-2 flex-shrink-0 w-[120px] sm:w-[180px]">
           <span className="text-[10px] text-gray-400 w-14 text-right">Active</span>
           <span className="text-[10px] text-gray-400 w-14 text-right">Away</span>
-          <span className="text-[10px] text-gray-400 w-14 text-right">Active %</span>
+          <span className="hidden sm:block text-[10px] text-gray-400 w-14 text-right">Active %</span>
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-2 overflow-x-auto">
         {days.map((date, di) => {
           const segments = buildDaySegments(history, statusHistory, date, workStart, workEnd);
           const { activeSec, awaySec } = computeDayDuration(segments, workStart, workEnd);
@@ -355,14 +361,14 @@ function Timeline({
             <div key={di} className="flex items-center gap-3">
               <DayLabel date={date} />
               <TimelineBar segments={segments} hours={hours} workStart={workStart} workEnd={workEnd} />
-              <div className="flex gap-2 flex-shrink-0 w-[180px]">
+              <div className="flex gap-2 flex-shrink-0 w-[120px] sm:w-[180px]">
                 <span className="text-xs text-green-600 w-14 text-right font-mono">
                   {activeSec > 0 ? fmtDuration(activeSec) : "—"}
                 </span>
                 <span className="text-xs text-gray-400 w-14 text-right font-mono">
                   {awaySec > 0 ? fmtDuration(awaySec) : "—"}
                 </span>
-                <span className="text-xs text-gray-700 w-14 text-right font-mono font-medium">
+                <span className="hidden sm:block text-xs text-gray-700 w-14 text-right font-mono font-medium">
                   {activePct}
                 </span>
               </div>
@@ -372,7 +378,7 @@ function Timeline({
       </div>
 
       {/* Hour labels */}
-      <div className="relative ml-[96px] mr-[192px] h-4">
+      <div className="relative ml-8 sm:ml-[96px] mr-[132px] sm:mr-[192px] h-4">
         {hours.map((h) => (
           <span
             key={h}
@@ -473,7 +479,7 @@ function UserDetailPage() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <div className="flex items-center gap-3">
         <Link to="/users" className="text-sm text-gray-400 hover:text-brand">
           ← Users
@@ -481,28 +487,30 @@ function UserDetailPage() {
       </div>
 
       {/* User card */}
-      <div className="rounded-xl border bg-white p-4 flex items-start gap-4">
-        {user.avatar_url ? (
-          <img src={user.avatar_url} className="h-16 w-16 rounded-full" alt="" />
-        ) : (
-          <div className="h-16 w-16 rounded-full bg-gray-200 flex items-center justify-center text-xl font-bold text-gray-400">
-            {(user.real_name ?? user.display_name ?? "?")[0].toUpperCase()}
-          </div>
-        )}
-        <div className="flex-1">
-          <div className="flex items-center gap-3">
-            <h2 className="text-xl font-semibold">{user.real_name ?? user.display_name}</h2>
-            <PresenceBadge presence={livePresence} showLabel />
-          </div>
-          {user.email && <p className="text-sm text-gray-400">{user.email}</p>}
-          {user.current_status_text && (
-            <p className="text-sm text-gray-600 mt-1">
-              {user.current_status_emoji ? <SlackText text={user.current_status_emoji} /> : null}{" "}
-              <SlackText text={user.current_status_text} />
-            </p>
+      <div className="rounded-xl border bg-white p-4 flex flex-col sm:flex-row items-start gap-4">
+        <div className="flex items-start gap-4 flex-1 min-w-0">
+          {user.avatar_url ? (
+            <img src={user.avatar_url} className="h-16 w-16 rounded-full flex-shrink-0" alt="" />
+          ) : (
+            <div className="h-16 w-16 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-xl font-bold text-gray-400">
+              {(user.real_name ?? user.display_name ?? "?")[0].toUpperCase()}
+            </div>
           )}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h2 className="text-xl font-semibold">{user.real_name ?? user.display_name}</h2>
+              <PresenceBadge presence={livePresence} showLabel />
+            </div>
+            {user.email && <p className="text-sm text-gray-400">{user.email}</p>}
+            {user.current_status_text && (
+              <p className="text-sm text-gray-600 mt-1">
+                {user.current_status_emoji ? <SlackText text={user.current_status_emoji} /> : null}{" "}
+                <SlackText text={user.current_status_text} />
+              </p>
+            )}
+          </div>
         </div>
-        <div className="text-right">
+        <div className="sm:text-right">
           <p className="text-xs text-gray-400">Availability (week)</p>
           <p className="text-2xl font-bold text-brand">{availPct}%</p>
           <p className="text-xs text-gray-400">Active {fmtDuration(activeSec)}</p>
@@ -527,45 +535,47 @@ function UserDetailPage() {
         {history.length === 0 ? (
           <p className="p-4 text-sm text-gray-400">No history for this week</p>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-              <tr>
-                <th className="px-4 py-2 text-left">Time</th>
-                <th className="px-4 py-2 text-left">Presence</th>
-                <th className="px-4 py-2 text-left">Status at event</th>
-                <th className="px-4 py-2 text-left">Source</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {[...history]
-                .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
-                .slice(0, 100)
-                .map((h) => {
-                  const { text, emoji } = statusAtTimestamp(sortedStatusHistory, h.recorded_at);
-                  return (
-                    <tr key={h.id}>
-                      <td className="px-4 py-2 text-gray-500">
-                        {new Date(h.recorded_at).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-2">
-                        <PresenceBadge presence={h.presence as "active" | "away"} showLabel />
-                      </td>
-                      <td className="px-4 py-2 text-gray-600 text-xs">
-                        {(text || emoji) ? (
-                          <>
-                            {emoji ? <SlackText text={emoji} /> : null}{" "}
-                            {text ? <SlackText text={text} /> : null}
-                          </>
-                        ) : (
-                          <span className="text-gray-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-gray-400 text-xs">{h.source}</td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[400px]">
+              <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                <tr>
+                  <th className="px-4 py-2 text-left">Time</th>
+                  <th className="px-4 py-2 text-left">Presence</th>
+                  <th className="px-4 py-2 text-left">Status at event</th>
+                  <th className="px-4 py-2 text-left">Source</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {[...history]
+                  .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
+                  .slice(0, 100)
+                  .map((h) => {
+                    const { text, emoji } = statusAtTimestamp(sortedStatusHistory, h.recorded_at);
+                    return (
+                      <tr key={h.id}>
+                        <td className="px-4 py-2 text-gray-500">
+                          {new Date(h.recorded_at).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2">
+                          <PresenceBadge presence={h.presence as "active" | "away"} showLabel />
+                        </td>
+                        <td className="px-4 py-2 text-gray-600 text-xs">
+                          {(text || emoji) ? (
+                            <>
+                              {emoji ? <SlackText text={emoji} /> : null}{" "}
+                              {text ? <SlackText text={text} /> : null}
+                            </>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-gray-400 text-xs">{h.source}</td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

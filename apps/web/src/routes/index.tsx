@@ -140,11 +140,11 @@ function Dashboard() {
   );
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-6">
       <h1 className="text-2xl font-semibold">Dashboard</h1>
 
       {/* Status bar */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <StatCard label="RTM Status" value={healthData?.rtm ?? "—"} color={healthData?.rtm === "connected" ? "green" : "red"} />
         <StatCard label="Currently Active" value={String(activeUsers.length)} color="blue" />
         <StatCard label="Total Users" value={String(allUsers.length)} color="gray" />

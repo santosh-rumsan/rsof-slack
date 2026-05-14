@@ -4,13 +4,13 @@
 > tsc -b && vite build
 
 [36mvite v6.4.2 [32mbuilding for production...[36m[39m
-[2K[1Gtransforming (1) [2msrc/main.tsx[22m[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1Gtransforming (44) [2m../../node_modules/.pnpm/@tanstack+react-route[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1Gtransforming (101) [2msrc/routes/users.tsx[22m[2K[1Gtransforming (170) [2msrc/routes/__root.tsx[22m[2K[1G[2K[1Gtransforming (224) [2m../../node_modules/.pnpm/@tanstack+router-cor[2K[1Gtransforming (1190) [2msrc/components/presence-toast.tsx[22m[2K[1Gtransforming (1905) [2m../../node_modules/.pnpm/use-sync-external-s[2K[1G[2K[1G[2K[1G[2K[1G[32m✓[39m 2303 modules transformed.
-[2K[1Grendering chunks (1)...[2K[1G[2K[1Gcomputing gzip size (0)...[2K[1Gcomputing gzip size (1)...[2K[1Gcomputing gzip size (2)...[2K[1Gcomputing gzip size (3)...[2K[1G[2mdist/[22m[32mindex.html                 [39m[1m[2m  0.46 kB[22m[1m[22m[2m │ gzip:   0.30 kB[22m
-[2mdist/[22m[2massets/[22m[35mindex-BUXmEEz6.css  [39m[1m[2m 17.37 kB[22m[1m[22m[2m │ gzip:   4.01 kB[22m
-[2mdist/[22m[2massets/[22m[36mindex-CvW_TbQF.js   [39m[1m[33m735.81 kB[39m[22m[2m │ gzip: 215.22 kB[22m
+[2K[1Gtransforming (1) [2msrc/main.tsx[22m[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1Gtransforming (44) [2m../../node_modules/.pnpm/@tanstack+react-route[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1G[2K[1Gtransforming (102) [2m../../node_modules/.pnpm/@tanstack+store@0.9.[2K[1Gtransforming (168) [2m../../node_modules/.pnpm/lucide-react@0.469.0[2K[1Gtransforming (196) [2msrc/routes/__root.tsx[22m[2K[1Gtransforming (1202) [2m../../node_modules/.pnpm/lucide-react@0.469.[2K[1G[2K[1Gtransforming (1896) [2m../../node_modules/.pnpm/react-smooth@4.0.4_[2K[1Gtransforming (2212) [2m../../node_modules/.pnpm/lodash@4.18.1/node_[2K[1G[2K[1G[2K[1G[2K[1G[32m✓[39m 2303 modules transformed.
+[2K[1Grendering chunks (1)...[2K[1G[2K[1Gcomputing gzip size (0)...[2K[1Gcomputing gzip size (1)...[2K[1Gcomputing gzip size (2)...[2K[1Gcomputing gzip size (3)...[2K[1G[2mdist/[22m[32mindex.html                 [39m[1m[2m  0.46 kB[22m[1m[22m[2m │ gzip:   0.29 kB[22m
+[2mdist/[22m[2massets/[22m[35mindex-sbyz1EBi.css  [39m[1m[2m 20.54 kB[22m[1m[22m[2m │ gzip:   4.51 kB[22m
+[2mdist/[22m[2massets/[22m[36mindex-BBhcBa5u.js   [39m[1m[33m746.90 kB[39m[22m[2m │ gzip: 217.99 kB[22m
 [33m
 (!) Some chunks are larger than 500 kB after minification. Consider:
 - Using dynamic import() to code-split the application
 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.[39m
-[32m✓ built in 1.57s[39m
+[32m✓ built in 1.56s[39m

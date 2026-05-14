@@ -39,7 +39,7 @@ function ReportsPage() {
   const workEnd = parseInt(getSettingValue(publicSettings, "WORK_END_HOUR", "24"), 10);
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 sm:p-6 space-y-4">
       <h1 className="text-2xl font-semibold">Reports</h1>
 
       {publicSettings.length > 0 && (
@@ -51,7 +51,7 @@ function ReportsPage() {
       )}
 
       {/* Date range */}
-      <div className="flex gap-3 items-center">
+      <div className="flex flex-wrap gap-2 items-center">
         <label className="text-sm text-gray-500">From</label>
         <input type="date" className="rounded-lg border px-2 py-1 text-sm" value={from} onChange={(e) => setFrom(e.target.value)} />
         <label className="text-sm text-gray-500">To</label>
@@ -59,7 +59,7 @@ function ReportsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b overflow-x-auto">
         {(["availability", "active-hours", "status-trends"] as Tab[]).map((t) => (
           <button
             key={t}
@@ -94,7 +94,7 @@ function AvailabilityTab({ from, to }: { from: string; to: string }) {
   }));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-x-auto">
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={chartData} layout="vertical" margin={{ left: 80 }}>
           <CartesianGrid strokeDasharray="3 3" />
@@ -105,7 +105,7 @@ function AvailabilityTab({ from, to }: { from: string; to: string }) {
         </BarChart>
       </ResponsiveContainer>
 
-      <table className="w-full text-sm border rounded-xl overflow-hidden">
+      <table className="w-full text-sm border rounded-xl overflow-hidden min-w-[400px]">
         <thead className="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
             <th className="px-4 py-2 text-left">User</th>
@@ -204,7 +204,7 @@ function StatusTrendsTab({ from, to }: { from: string; to: string }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-      <table className="w-full text-sm border rounded-xl overflow-hidden">
+      <table className="w-full text-sm border rounded-xl overflow-hidden min-w-[300px]">
         <thead className="bg-gray-50 text-xs uppercase text-gray-500">
           <tr>
             <th className="px-4 py-2 text-left">Status</th>

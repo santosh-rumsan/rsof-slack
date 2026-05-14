@@ -191,7 +191,7 @@ function PresenceOverviewPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="p-4 sm:p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Presence Overview</h1>
         <div className="flex items-center gap-2">
@@ -222,7 +222,7 @@ function PresenceOverviewPage() {
       {loading ? (
         <p className="text-sm text-gray-400">Loading…</p>
       ) : (
-        <div className="rounded-xl border bg-white p-4">
+        <div className="rounded-xl border bg-white p-4 overflow-x-auto">
           {/* Header row */}
           <div className="flex items-center gap-3 mb-1">
             <div className="w-[192px] flex-shrink-0" />
