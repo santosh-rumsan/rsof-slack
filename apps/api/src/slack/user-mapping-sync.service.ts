@@ -1,20 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class UserMappingSyncService {
   private readonly logger = new Logger(UserMappingSyncService.name);
 
   constructor(
-    private config: ConfigService,
     private prisma: PrismaService,
+    private settings: SettingsService,
   ) {}
 
   async syncUserMappings(log?: (msg: string) => void): Promise<Record<string, number>> {
     const emit = log ?? (() => {});
-    const apiUrl = this.config.get<string>('USER_MGMT_API_URL', '');
+    const apiUrl = this.settings.get('USER_MGMT_API_URL', '');
     if (!apiUrl) {
       emit('USER_MGMT_API_URL not set; skipping.');
       this.logger.warn('USER_MGMT_API_URL not set; skipping user mapping sync');
@@ -23,7 +23,7 @@ export class UserMappingSyncService {
 
     emit(`Fetching user mappings from ${apiUrl}...`);
 
-    const apiKey = this.config.get<string>('USER_MGMT_API_KEY', '');
+    const apiKey = this.settings.get('USER_MGMT_API_KEY', '');
     const resp = await axios.get(apiUrl, {
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
       timeout: 30000,
@@ -40,6 +40,7 @@ export class UserMappingSyncService {
     for (const item of data) {
       const internalId: string = item.user_cuid;
       const slackId: string = item.external_id;
+      const userTimezone: string | null = item.user_timezone ?? null;
 
       if (!internalId || !slackId) {
         skipped++;
@@ -59,8 +60,8 @@ export class UserMappingSyncService {
 
       await this.prisma.userMapping.upsert({
         where: { id: internalId },
-        create: { id: internalId, slackId, syncedAt: now },
-        update: { slackId, syncedAt: now },
+        create: { id: internalId, slackId, userTimezone, syncedAt: now },
+        update: { slackId, userTimezone, syncedAt: now },
       });
       emit(`Synced: ${internalId} → ${slackId}`);
       synced++;

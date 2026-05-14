@@ -7,6 +7,7 @@ import { ConfigService } from '@nestjs/config';
 import { RTMClient } from '@slack/rtm-api';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
+import { PresencePollingService } from './presence-polling.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -15,6 +16,7 @@ function sleep(ms: number) {
 }
 
 const LOG_FILE = path.resolve(process.cwd(), '.logs', 'rtm-connection.log');
+const DISCONNECT_GRACE_MS = 10_000; // start polling after 10s of disconnect
 
 function appendRtmLog(event: string): void {
   const line = `${new Date().toISOString()} [RTM] ${event}\n`;
@@ -27,11 +29,13 @@ export class RtmService implements OnApplicationShutdown {
   private readonly logger = new Logger(RtmService.name);
   private rtm: RTMClient;
   private connected = false;
+  private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
     private events: EventsService,
+    private presencePolling: PresencePollingService,
   ) {}
 
   get isConnected(): boolean {
@@ -46,6 +50,19 @@ export class RtmService implements OnApplicationShutdown {
       this.connected = true;
       this.logger.log('RTM WebSocket connected');
       appendRtmLog('connected');
+
+      // Cancel the grace-period timer if RTM reconnected before 10s
+      if (this.disconnectTimer) {
+        clearTimeout(this.disconnectTimer);
+        this.disconnectTimer = null;
+      }
+
+      // Stop polling if it was running (disconnect was >10s)
+      this.presencePolling.stopPolling();
+
+      // Always reconcile once on connect to catch missed changes
+      this.presencePolling.reconcileOnce();
+
       try {
         await this.resubscribeAll();
       } catch (e) {
@@ -57,6 +74,16 @@ export class RtmService implements OnApplicationShutdown {
       this.connected = false;
       this.logger.warn('RTM disconnected');
       appendRtmLog('disconnected');
+
+      // Start polling after grace period if still disconnected
+      if (!this.disconnectTimer) {
+        this.disconnectTimer = setTimeout(() => {
+          this.disconnectTimer = null;
+          if (!this.connected) {
+            this.presencePolling.startPolling();
+          }
+        }, DISCONNECT_GRACE_MS);
+      }
     });
 
     this.rtm.on('presence_change', async (event: any) => {
@@ -92,6 +119,8 @@ export class RtmService implements OnApplicationShutdown {
   }
 
   async onApplicationShutdown() {
+    if (this.disconnectTimer) clearTimeout(this.disconnectTimer);
+    this.presencePolling.stopPolling();
     if (this.rtm) {
       await this.rtm.disconnect();
     }

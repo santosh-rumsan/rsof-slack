@@ -17,8 +17,9 @@ function Layout() {
       <div className="flex h-screen overflow-hidden">
         {/* Sidebar */}
         <aside className="flex w-56 flex-col border-r bg-white">
-          <div className="flex h-14 items-center px-4 font-bold text-brand text-lg border-b">
-            rsof-slack
+          <div className="flex h-14 items-center gap-2 px-4 font-bold text-brand text-lg border-b">
+            <img src="/slack.svg" alt="Slack" className="h-6 w-6" />
+            Rumsan Slack
           </div>
           <nav className="flex flex-col gap-1 p-3 flex-1">
             <NavLink to="/" icon={<LayoutDashboard size={16} />} label="Dashboard" />

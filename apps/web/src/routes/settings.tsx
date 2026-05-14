@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { admin, type JobStatus } from "@/lib/api";
+import { admin, type JobStatus, type AppSetting, SETTING_META } from "@/lib/api";
 
 export const Route = createFileRoute("/settings")({
   component: SettingsPage,
@@ -30,13 +30,19 @@ function timeUntil(iso: string | null): string {
 
 function SettingsPage() {
   const [jobs, setJobs] = useState<JobStatus[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [jobsLoading, setJobsLoading] = useState(true);
+
+  const [appSettings, setAppSettings] = useState<AppSetting[]>([]);
+  const [edited, setEdited] = useState<Record<string, string>>({});
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
   useEffect(() => {
     admin.syncStatus()
       .then((s) => setJobs(s.jobs))
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => setJobsLoading(false));
 
     const timer = setInterval(() => {
       admin.syncStatus().then((s) => setJobs(s.jobs)).catch(() => {});
@@ -44,19 +50,126 @@ function SettingsPage() {
     return () => clearInterval(timer);
   }, []);
 
+  useEffect(() => {
+    admin.getSettings()
+      .then((s) => {
+        setAppSettings(s);
+        const map: Record<string, string> = {};
+        for (const { key, value } of s) map[key] = value;
+        setEdited(map);
+      })
+      .catch(() => {})
+      .finally(() => setSettingsLoading(false));
+  }, []);
+
+  async function handleSave(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setSaveMsg(null);
+    try {
+      const entries = appSettings.map(({ key }) => ({
+        key,
+        value: edited[key] ?? "",
+      }));
+      await admin.updateSettings(entries);
+      setSaveMsg("Settings saved.");
+    } catch (err: any) {
+      setSaveMsg(`Error: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const knownKeys = appSettings.filter((s) => SETTING_META[s.key]);
+  const unknownKeys = appSettings.filter((s) => !SETTING_META[s.key]);
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-8">
       <h1 className="text-2xl font-semibold">Settings</h1>
 
+      {/* ── App Settings ─────────────────────────────────────────────────── */}
+      <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b">
+          <h2 className="font-medium text-gray-700">Application Settings</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Stored in the database. Env vars are used only as initial defaults.
+          </p>
+        </div>
+
+        {settingsLoading ? (
+          <p className="p-4 text-sm text-gray-400">Loading…</p>
+        ) : (
+          <form onSubmit={handleSave} className="divide-y">
+            {knownKeys.map(({ key }) => {
+              const meta = SETTING_META[key];
+              return (
+                <div key={key} className="px-4 py-4 grid grid-cols-[1fr_2fr] gap-4 items-start">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-800" htmlFor={key}>
+                      {meta.label}
+                    </label>
+                    <p className="text-xs text-gray-400 mt-0.5">{meta.description}</p>
+                    <p className="text-[10px] text-gray-300 font-mono mt-0.5">{key}</p>
+                  </div>
+                  <input
+                    id={key}
+                    type={meta.type === "password" ? "password" : meta.type === "number" ? "number" : "text"}
+                    value={edited[key] ?? ""}
+                    onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30"
+                  />
+                </div>
+              );
+            })}
+
+            {unknownKeys.length > 0 && (
+              <>
+                <div className="px-4 py-2 bg-gray-50">
+                  <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Other</p>
+                </div>
+                {unknownKeys.map(({ key }) => (
+                  <div key={key} className="px-4 py-3 grid grid-cols-[1fr_2fr] gap-4 items-center">
+                    <label className="text-sm font-mono text-gray-600" htmlFor={key}>{key}</label>
+                    <input
+                      id={key}
+                      type="text"
+                      value={edited[key] ?? ""}
+                      onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
+                      className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30"
+                    />
+                  </div>
+                ))}
+              </>
+            )}
+
+            <div className="px-4 py-4 flex items-center gap-3 bg-gray-50">
+              <button
+                type="submit"
+                disabled={saving}
+                className="px-4 py-2 rounded-lg bg-brand text-white text-sm font-medium disabled:opacity-50 hover:bg-brand/90 transition-colors"
+              >
+                {saving ? "Saving…" : "Save Settings"}
+              </button>
+              {saveMsg && (
+                <span className={`text-sm ${saveMsg.startsWith("Error") ? "text-red-600" : "text-green-600"}`}>
+                  {saveMsg}
+                </span>
+              )}
+            </div>
+          </form>
+        )}
+      </div>
+
+      {/* ── Scheduled Jobs ───────────────────────────────────────────────── */}
       <div className="rounded-xl border bg-white overflow-hidden">
         <div className="px-4 py-3 border-b">
           <h2 className="font-medium text-gray-700">Scheduled Jobs</h2>
           <p className="text-xs text-gray-400 mt-0.5">
-            Background jobs that run automatically. Intervals are set via environment variables.
+            Background jobs. Presence polling activates only when RTM is disconnected &gt;10s.
           </p>
         </div>
 
-        {loading ? (
+        {jobsLoading ? (
           <p className="p-4 text-sm text-gray-400">Loading…</p>
         ) : jobs.length === 0 ? (
           <p className="p-4 text-sm text-gray-400">No scheduled jobs found.</p>
@@ -73,27 +186,25 @@ function SettingsPage() {
                       {job.interval_label}
                     </span>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
-                    <span>
-                      <span className="text-gray-400">Last run: </span>
-                      {fmtTime(job.last_run)}
-                    </span>
-                    <span>
-                      <span className="text-gray-400">Next run: </span>
-                      {fmtTime(job.next_run)}{" "}
-                      <span className="text-gray-400">({timeUntil(job.next_run)})</span>
-                    </span>
-                  </div>
+                  {(job.last_run || job.next_run) && (
+                    <div className="flex items-center gap-4 text-xs text-gray-500 flex-shrink-0">
+                      {job.last_run && (
+                        <span>
+                          <span className="text-gray-400">Last run: </span>
+                          {fmtTime(job.last_run)}
+                        </span>
+                      )}
+                      {job.next_run && (
+                        <span>
+                          <span className="text-gray-400">Next run: </span>
+                          {fmtTime(job.next_run)}{" "}
+                          <span className="text-gray-400">({timeUntil(job.next_run)})</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <p className="text-xs text-gray-500 leading-relaxed">{job.description}</p>
-                <p className="text-[10px] text-gray-400 font-mono">
-                  env key:{" "}
-                  {job.job_id === "user_sync"
-                    ? "USER_SYNC_INTERVAL (minutes, default 30)"
-                    : job.job_id === "presence_reconcile"
-                    ? "PRESENCE_RECONCILE_INTERVAL (minutes, default 5)"
-                    : "USER_MAPPING_SYNC_INTERVAL (minutes, default 60)"}
-                </p>
               </div>
             ))}
           </div>

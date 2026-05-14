@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
+import { SettingsService } from '../settings/settings.service';
 import { SlackSyncService } from './slack-sync.service';
 import { UserMappingSyncService } from './user-mapping-sync.service';
+import { PresencePollingService } from './presence-polling.service';
 
 interface JobMeta {
   description: string;
@@ -10,6 +11,8 @@ interface JobMeta {
   intervalLabel: string;
   nextRun: Date;
   lastRun: Date | null;
+  settingKey: string;
+  fn: () => Promise<any>;
 }
 
 @Injectable()
@@ -18,35 +21,25 @@ export class SchedulerJobsService {
   private jobs = new Map<string, JobMeta>();
 
   constructor(
-    private config: ConfigService,
+    private settings: SettingsService,
     private schedulerRegistry: SchedulerRegistry,
     private slackSync: SlackSyncService,
     private userMappingSync: UserMappingSyncService,
+    private presencePolling: PresencePollingService,
   ) {}
 
   start(): void {
-    const userSyncMs =
-      this.config.get<number>('USER_SYNC_INTERVAL', 30) * 60 * 1000;
-    const presenceMs =
-      this.config.get<number>('PRESENCE_RECONCILE_INTERVAL', 5) * 60 * 1000;
-    const mappingMs =
-      this.config.get<number>('USER_MAPPING_SYNC_INTERVAL', 60) * 60 * 1000;
-
     this.addJob(
       'user_sync',
-      userSyncMs,
+      'USER_SYNC_INTERVAL',
+      30,
       'Syncs the Slack user directory — fetches all members from the Slack API and upserts them into the local database. Deactivates users who are no longer in Slack.',
       () => this.slackSync.syncSlackUsers(),
     );
     this.addJob(
-      'presence_reconcile',
-      presenceMs,
-      'Polls the Slack API for the current presence status of every active user and updates the database when a change is detected. Fills in gaps between RTM events.',
-      () => this.slackSync.reconcilePresence(),
-    );
-    this.addJob(
       'user_mapping_sync',
-      mappingMs,
+      'USER_MAPPING_SYNC_INTERVAL',
+      60,
       'Fetches user-to-Slack-ID mappings from the external user management API (USER_MGMT_API_URL) and upserts them into the local user_mappings table.',
       () => this.userMappingSync.syncUserMappings(),
     );
@@ -54,20 +47,58 @@ export class SchedulerJobsService {
     this.logger.log('Scheduled jobs registered');
   }
 
-  private addJob(name: string, ms: number, description: string, fn: () => Promise<any>): void {
+  /** Restart a job with its current interval from settings (call after settings change) */
+  restartJob(jobId: string): void {
+    const meta = this.jobs.get(jobId);
+    if (!meta) return;
+
+    try { this.schedulerRegistry.deleteInterval(jobId); } catch {}
+
+    const newMs = this.settings.getNumber(meta.settingKey, 30) * 60 * 1000;
+    meta.intervalMs = newMs;
+    meta.intervalLabel = formatInterval(newMs);
+    meta.nextRun = new Date(Date.now() + newMs);
+
+    const interval = setInterval(async () => {
+      const m = this.jobs.get(jobId)!;
+      m.nextRun = new Date(Date.now() + m.intervalMs);
+      m.lastRun = new Date();
+      try {
+        await m.fn();
+      } catch (e) {
+        this.logger.error(`Scheduled job ${jobId} failed: ${e.message}`);
+      }
+    }, newMs);
+    this.schedulerRegistry.addInterval(jobId, interval);
+
+    this.logger.log(`Restarted job ${jobId} with interval ${meta.intervalLabel}`);
+  }
+
+  private addJob(
+    name: string,
+    settingKey: string,
+    defaultMinutes: number,
+    description: string,
+    fn: () => Promise<any>,
+  ): void {
+    const ms = this.settings.getNumber(settingKey, defaultMinutes) * 60 * 1000;
     const intervalLabel = formatInterval(ms);
-    this.jobs.set(name, {
+
+    const meta: JobMeta = {
       description,
       intervalMs: ms,
       intervalLabel,
       nextRun: new Date(Date.now() + ms),
       lastRun: null,
-    });
+      settingKey,
+      fn,
+    };
+    this.jobs.set(name, meta);
 
     const interval = setInterval(async () => {
-      const meta = this.jobs.get(name)!;
-      meta.nextRun = new Date(Date.now() + ms);
-      meta.lastRun = new Date();
+      const m = this.jobs.get(name)!;
+      m.nextRun = new Date(Date.now() + m.intervalMs);
+      m.lastRun = new Date();
       try {
         await fn();
       } catch (e) {
@@ -85,7 +116,7 @@ export class SchedulerJobsService {
     last_run: string | null;
     next_run: string | null;
   }[] {
-    return Array.from(this.jobs.entries()).map(([job_id, meta]) => ({
+    const jobs = Array.from(this.jobs.entries()).map(([job_id, meta]) => ({
       job_id,
       description: meta.description,
       interval_label: meta.intervalLabel,
@@ -93,6 +124,20 @@ export class SchedulerJobsService {
       last_run: meta.lastRun?.toISOString() ?? null,
       next_run: meta.nextRun.toISOString(),
     }));
+
+    // Add presence reconciliation as a synthetic entry (driven by RTM state)
+    const pollingStatus = this.presencePolling.getStatus();
+    jobs.push({
+      job_id: 'presence_reconcile',
+      description:
+        'Polls the Slack API for presence when RTM is disconnected for >10s. Rate-limited to 50 req/min. Runs once on RTM reconnect to fill gaps.',
+      interval_label: pollingStatus.interval_label,
+      interval_ms: this.settings.getNumber('PRESENCE_RECONCILE_INTERVAL', 5) * 60 * 1000,
+      last_run: null,
+      next_run: null,
+    });
+
+    return jobs;
   }
 }
 

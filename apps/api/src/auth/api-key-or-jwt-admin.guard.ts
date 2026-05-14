@@ -5,25 +5,29 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { SettingsService } from '../settings/settings.service';
 import * as crypto from 'crypto';
 
 /**
  * Accepts either:
- *   1. A valid X-API-Key header matching the API_KEY env var, OR
+ *   1. A valid X-API-Key header matching the API_KEY setting (DB or env), OR
  *   2. A valid RS256 Bearer JWT whose `roles` array contains `{APP_ID}|admin`
  *
- * Both paths require the respective env vars to be set.
+ * Both paths require the respective env vars / settings to be set.
  */
 @Injectable()
 export class ApiKeyOrJwtAdminGuard implements CanActivate {
-  constructor(private config: ConfigService) {}
+  constructor(
+    private config: ConfigService,
+    private settings: SettingsService,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
 
-    // ── 1. Try API key ────────────────────────────────────────────────────────
+    // ── 1. Try API key (DB wins, falls back to env) ───────────────────────────
     const apiKey: string = request.headers['x-api-key'] ?? '';
-    const expectedKey = this.config.get<string>('API_KEY', '');
+    const expectedKey = this.settings.get('API_KEY', this.config.get<string>('API_KEY', ''));
     if (apiKey && expectedKey && apiKey === expectedKey) {
       return true;
     }

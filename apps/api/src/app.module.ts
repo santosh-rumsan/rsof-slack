@@ -16,6 +16,7 @@ import { SlackModule } from './slack/slack.module';
 import { HealthModule } from './health/health.module';
 import { AdminModule } from './admin/admin.module';
 import { MeModule } from './me/me.module';
+import { SettingsModule } from './settings/settings.module';
 
 import { RtmService } from './slack/rtm.service';
 import { SlackSyncService } from './slack/slack-sync.service';
@@ -66,6 +67,7 @@ class AppBootstrapService implements OnApplicationBootstrap {
         ]
       : []),
     PrismaModule,
+    SettingsModule,
     EventsModule,
     SlackModule,
     HealthModule,

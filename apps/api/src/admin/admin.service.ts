@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 
 @Injectable()
 export class AdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private settings: SettingsService,
+  ) {}
 
   // ─── Users ───────────────────────────────────────────────────────────────
 
@@ -70,6 +74,15 @@ export class AdminService {
   }
 
   async getDurationSummary(slackId: string, from?: Date, to?: Date) {
+    // Use per-user timezone if available, fall back to global setting
+    const mapping = await this.prisma.userMapping.findUnique({
+      where: { slackId },
+      select: { userTimezone: true },
+    });
+    const timezone = mapping?.userTimezone ?? this.settings.get('TIMEZONE', 'UTC');
+    const workStart = this.settings.getNumber('WORK_START_HOUR', 0);
+    const workEnd = this.settings.getNumber('WORK_END_HOUR', 24);
+
     const fromClause = from ? Prisma.sql`AND recorded_at >= ${from}` : Prisma.sql``;
     const toClause = to ? Prisma.sql`AND recorded_at <= ${to}` : Prisma.sql``;
 
@@ -83,6 +96,8 @@ export class AdminService {
           LEAD(recorded_at) OVER (ORDER BY recorded_at) AS next_at
         FROM presence_history
         WHERE slack_id = ${slackId}
+          AND EXTRACT(HOUR FROM recorded_at AT TIME ZONE ${timezone})
+              BETWEEN ${workStart} AND ${workEnd - 1}
         ${fromClause}
         ${toClause}
       )
@@ -97,6 +112,8 @@ export class AdminService {
       slack_id: slackId,
       from_dt: from ?? null,
       to_dt: to ?? null,
+      timezone,
+      work_window: `${workStart}:00–${workEnd}:00`,
       durations: rows.map((r) => ({
         presence: r.presence,
         total_seconds: Number(r.total_seconds),
@@ -114,6 +131,10 @@ export class AdminService {
   }
 
   async reportPresenceSummary(from?: Date, to?: Date) {
+    const timezone = this.settings.get('TIMEZONE', 'UTC');
+    const workStart = this.settings.getNumber('WORK_START_HOUR', 0);
+    const workEnd = this.settings.getNumber('WORK_END_HOUR', 24);
+
     const fromClause = from ? Prisma.sql`AND recorded_at >= ${from}` : Prisma.sql``;
     const toClause = to ? Prisma.sql`AND recorded_at <= ${to}` : Prisma.sql``;
 
@@ -125,7 +146,8 @@ export class AdminService {
           recorded_at,
           LEAD(recorded_at) OVER (PARTITION BY slack_id ORDER BY recorded_at) AS next_at
         FROM presence_history
-        WHERE 1=1
+        WHERE EXTRACT(HOUR FROM recorded_at AT TIME ZONE ${timezone})
+              BETWEEN ${workStart} AND ${workEnd - 1}
         ${fromClause}
         ${toClause}
       ),
@@ -160,16 +182,22 @@ export class AdminService {
   }
 
   async reportActiveHours(from?: Date, to?: Date) {
+    const timezone = this.settings.get('TIMEZONE', 'UTC');
+    const workStart = this.settings.getNumber('WORK_START_HOUR', 0);
+    const workEnd = this.settings.getNumber('WORK_END_HOUR', 24);
+
     const fromClause = from ? Prisma.sql`AND recorded_at >= ${from}` : Prisma.sql``;
     const toClause = to ? Prisma.sql`AND recorded_at <= ${to}` : Prisma.sql``;
 
     return this.prisma.$queryRaw<any[]>(Prisma.sql`
       SELECT
-        EXTRACT(ISODOW FROM recorded_at)::int - 1 AS day_of_week,
-        EXTRACT(HOUR FROM recorded_at)::int AS hour_of_day,
+        EXTRACT(ISODOW FROM recorded_at AT TIME ZONE ${timezone})::int - 1 AS day_of_week,
+        EXTRACT(HOUR FROM recorded_at AT TIME ZONE ${timezone})::int AS hour_of_day,
         COUNT(*) AS count
       FROM presence_history
       WHERE presence = 'active'
+        AND EXTRACT(HOUR FROM recorded_at AT TIME ZONE ${timezone})
+            BETWEEN ${workStart} AND ${workEnd - 1}
       ${fromClause}
       ${toClause}
       GROUP BY 1, 2

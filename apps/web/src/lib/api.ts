@@ -143,12 +143,34 @@ export interface Health {
   rtm: string;
 }
 
+export interface AppSetting {
+  key: string;
+  value: string;
+}
+
+// Human-readable metadata for each setting key
+export const SETTING_META: Record<string, { label: string; description: string; type: 'text' | 'number' | 'password' }> = {
+  USER_MGMT_API_URL:           { label: 'User Mgmt API URL',          description: 'External user management API endpoint',         type: 'text' },
+  USER_MGMT_API_KEY:           { label: 'User Mgmt API Key',          description: 'Bearer token for the user management API',       type: 'password' },
+  USER_SYNC_INTERVAL:          { label: 'User Sync Interval (min)',   description: 'How often to sync Slack users (minutes)',         type: 'number' },
+  PRESENCE_RECONCILE_INTERVAL: { label: 'Presence Reconcile (min)',   description: 'Poll interval when RTM is disconnected (minutes)', type: 'number' },
+  USER_MAPPING_SYNC_INTERVAL:  { label: 'User Mapping Sync (min)',    description: 'How often to sync user mappings (minutes)',       type: 'number' },
+  API_KEY:                     { label: 'Admin API Key',              description: 'Secret key for admin API access',                type: 'password' },
+  TIMEZONE:                    { label: 'Timezone',                   description: 'Timezone for report calculations (e.g. Asia/Kathmandu)', type: 'text' },
+  WORK_START_HOUR:             { label: 'Work Start Hour',            description: 'Start of work day (0–23, used in reports)',      type: 'number' },
+  WORK_END_HOUR:               { label: 'Work End Hour',              description: 'End of work day (0–23, exclusive)',              type: 'number' },
+};
+
 // ---------------------------------------------------------------------------
 // API namespaces
 // ---------------------------------------------------------------------------
 
 export const health = {
   get: () => request<Health>("/health"),
+};
+
+export const settings = {
+  getPublic: () => fetch("/api/v1/settings").then((r) => r.json()) as Promise<AppSetting[]>,
 };
 
 export const admin = {
@@ -218,4 +240,12 @@ export const admin = {
     return request<StatusTrendRow[]>(`/admin/reports/status-trends?${qs}`);
   },
   inactiveUsers: (days = 7) => request<InactiveUserRow[]>(`/admin/reports/inactive-users?days=${days}`),
+
+  // Settings
+  getSettings: () => request<AppSetting[]>('/admin/settings'),
+  updateSettings: (entries: AppSetting[]) =>
+    request<{ updated: number }>('/admin/settings', {
+      method: 'PUT',
+      body: JSON.stringify(entries),
+    }),
 };

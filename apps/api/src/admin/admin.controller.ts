@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Body,
   Param,
   Query,
   Res,
@@ -18,6 +20,8 @@ import { EventsService } from '../events/events.service';
 import { SlackSyncService } from '../slack/slack-sync.service';
 import { UserMappingSyncService } from '../slack/user-mapping-sync.service';
 import { SchedulerJobsService } from '../slack/scheduler-jobs.service';
+import { SettingsService } from '../settings/settings.service';
+import { PresencePollingService } from '../slack/presence-polling.service';
 
 @Controller('admin')
 @UseGuards(ApiKeyOrJwtAdminGuard)
@@ -28,7 +32,41 @@ export class AdminController {
     private slackSync: SlackSyncService,
     private userMappingSync: UserMappingSyncService,
     private schedulerJobs: SchedulerJobsService,
+    private settings: SettingsService,
+    private presencePolling: PresencePollingService,
   ) {}
+
+  // ─── Settings ────────────────────────────────────────────────────────────
+
+  @Get('settings')
+  getSettings() {
+    return this.settings.getAll();
+  }
+
+  @Put('settings')
+  async updateSettings(@Body() body: { key: string; value: string }[]) {
+    if (!Array.isArray(body)) {
+      throw new Error('Body must be an array of { key, value } objects');
+    }
+    await this.settings.setMany(body);
+
+    // Restart affected scheduled jobs if their interval changed
+    const restartable = ['USER_SYNC_INTERVAL', 'USER_MAPPING_SYNC_INTERVAL'];
+    const jobMap: Record<string, string> = {
+      USER_SYNC_INTERVAL: 'user_sync',
+      USER_MAPPING_SYNC_INTERVAL: 'user_mapping_sync',
+    };
+    for (const { key } of body) {
+      if (restartable.includes(key)) {
+        this.schedulerJobs.restartJob(jobMap[key]);
+      }
+      if (key === 'PRESENCE_RECONCILE_INTERVAL') {
+        this.presencePolling.restartIfPolling();
+      }
+    }
+
+    return { updated: body.length };
+  }
 
   // ─── Sync triggers ───────────────────────────────────────────────────────
 

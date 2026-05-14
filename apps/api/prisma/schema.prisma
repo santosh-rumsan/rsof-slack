@@ -55,11 +55,20 @@ model StatusHistory {
 }
 
 model UserMapping {
-  id       String   @id
-  slackId  String   @unique @map("slack_id")
-  syncedAt DateTime @default(now()) @map("synced_at") @db.Timestamptz
+  id           String   @id
+  slackId      String   @unique @map("slack_id")
+  userTimezone String?  @map("user_timezone")
+  syncedAt     DateTime @default(now()) @map("synced_at") @db.Timestamptz
 
   slackUser SlackUser @relation(fields: [slackId], references: [slackId])
 
   @@map("user_mappings")
+}
+
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("settings")
 }

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { WebClient } from '@slack/web-api';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,6 +16,7 @@ export class SlackSyncService {
   constructor(
     private config: ConfigService,
     private prisma: PrismaService,
+    @Inject(forwardRef(() => RtmService))
     private rtm: RtmService,
   ) {
     this.webClient = new WebClient(this.config.get('SLACK_BOT_TOKEN'));
@@ -135,7 +136,8 @@ export class SlackSyncService {
         this.logger.warn(`Failed to fetch presence for ${user.slackId}: ${e.message}`);
       }
 
-      await sleep(100);
+      // Slack tier-3 rate limit: 50 req/min → 1 req per 1200ms
+      await sleep(1200);
     }
 
     emit(`Done: ${updated} updated of ${users.length} checked.`);
