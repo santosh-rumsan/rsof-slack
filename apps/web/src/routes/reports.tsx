@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { admin, type PresenceSummaryRow, type ActiveHoursRow, type DndPatternRow, type StatusTrendRow } from "@/lib/api";
+import { admin, type PresenceSummaryRow, type ActiveHoursRow, type StatusTrendRow } from "@/lib/api";
 import {
   BarChart,
   Bar,
@@ -16,7 +16,7 @@ export const Route = createFileRoute("/reports")({
   component: ReportsPage,
 });
 
-type Tab = "availability" | "active-hours" | "dnd" | "status-trends";
+type Tab = "availability" | "active-hours" | "status-trends";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -39,7 +39,7 @@ function ReportsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">
-        {(["availability", "active-hours", "dnd", "status-trends"] as Tab[]).map((t) => (
+        {(["availability", "active-hours", "status-trends"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -47,7 +47,7 @@ function ReportsPage() {
               tab === t ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
-            {t === "availability" ? "Availability" : t === "active-hours" ? "Active Hours" : t === "dnd" ? "DnD Patterns" : "Status Trends"}
+            {t === "availability" ? "Availability" : t === "active-hours" ? "Active Hours" : "Status Trends"}
           </button>
         ))}
       </div>
@@ -55,7 +55,6 @@ function ReportsPage() {
       <div>
         {tab === "availability" && <AvailabilityTab from={from} to={to} />}
         {tab === "active-hours" && <ActiveHoursTab from={from} to={to} />}
-        {tab === "dnd" && <DndTab from={from} to={to} />}
         {tab === "status-trends" && <StatusTrendsTab from={from} to={to} />}
       </div>
     </div>
@@ -147,53 +146,6 @@ function ActiveHoursTab({ from, to }: { from: string; to: string }) {
                   <td key={h} title={`${day} ${h}:00 — ${v} events`} className="w-7 h-7 border border-white rounded" style={{ backgroundColor: bg }} />
                 );
               })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function DndTab({ from, to }: { from: string; to: string }) {
-  const [data, setData] = useState<DndPatternRow[]>([]);
-  useEffect(() => {
-    admin.dndPatterns(from || undefined, to || undefined).then(setData);
-  }, [from, to]);
-
-  const chartData = data.slice(0, 20).map((r) => ({
-    name: r.display_name ?? r.real_name ?? r.slack_id,
-    count: r.dnd_count,
-    avg: r.avg_duration_seconds ? Math.round(r.avg_duration_seconds / 60) : 0,
-  }));
-
-  return (
-    <div className="space-y-4">
-      <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={chartData} layout="vertical" margin={{ left: 80 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis type="number" />
-          <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 11 }} />
-          <Tooltip />
-          <Bar dataKey="count" name="DnD sessions" fill="#f97316" radius={[0, 4, 4, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-      <table className="w-full text-sm border rounded-xl overflow-hidden">
-        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-          <tr>
-            <th className="px-4 py-2 text-left">User</th>
-            <th className="px-4 py-2 text-right">Sessions</th>
-            <th className="px-4 py-2 text-right">Avg Duration</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y bg-white">
-          {data.map((r) => (
-            <tr key={r.slack_id}>
-              <td className="px-4 py-2">{r.display_name ?? r.real_name ?? r.slack_id}</td>
-              <td className="px-4 py-2 text-right">{r.dnd_count}</td>
-              <td className="px-4 py-2 text-right text-gray-500">
-                {r.avg_duration_seconds ? fmtDuration(r.avg_duration_seconds) : "—"}
-              </td>
             </tr>
           ))}
         </tbody>

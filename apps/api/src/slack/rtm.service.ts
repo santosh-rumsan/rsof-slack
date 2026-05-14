@@ -80,23 +80,9 @@ export class RtmService implements OnApplicationShutdown {
           slackId,
           profile.status_text || '',
           profile.status_emoji || '',
-          !!profile.huddle_state,
-          false,
         );
       } catch (e) {
         this.logger.error(`user_change upsert failed for ${slackId}: ${e.message}`);
-      }
-    });
-
-    this.rtm.on('dnd_updated_user', async (event: any) => {
-      const slackId: string = event.user;
-      if (!slackId) return;
-      const dnd = event.dnd_status || {};
-      const isDnd = !!(dnd.dnd_enabled && dnd.next_dnd_start_ts > 0);
-      try {
-        await this.upsertDndChange(slackId, isDnd);
-      } catch (e) {
-        this.logger.error(`dnd_updated_user upsert failed for ${slackId}: ${e.message}`);
       }
     });
 
@@ -165,52 +151,27 @@ export class RtmService implements OnApplicationShutdown {
     });
   }
 
-  private async upsertStatusChange(
+  async upsertStatusChange(
     slackId: string,
     statusText: string,
     statusEmoji: string,
-    isBusy: boolean,
-    isDnd: boolean,
   ): Promise<void> {
     const user = await this.prisma.slackUser.findUnique({ where: { slackId } });
     if (!user) return;
 
     const changed =
       user.currentStatusText !== statusText ||
-      user.currentStatusEmoji !== statusEmoji ||
-      user.isBusy !== isBusy ||
-      user.isDnd !== isDnd;
+      user.currentStatusEmoji !== statusEmoji;
 
     if (!changed) return;
 
     await this.prisma.$transaction([
       this.prisma.slackUser.update({
         where: { slackId },
-        data: { currentStatusText: statusText, currentStatusEmoji: statusEmoji, isBusy, isDnd },
+        data: { currentStatusText: statusText, currentStatusEmoji: statusEmoji },
       }),
       this.prisma.statusHistory.create({
-        data: { slackId, statusText, statusEmoji, isBusy, isDnd },
-      }),
-    ]);
-  }
-
-  private async upsertDndChange(slackId: string, isDnd: boolean): Promise<void> {
-    const user = await this.prisma.slackUser.findUnique({ where: { slackId } });
-    if (!user || user.isDnd === isDnd) return;
-
-    await this.prisma.$transaction([
-      this.prisma.slackUser.update({
-        where: { slackId },
-        data: { isDnd },
-      }),
-      this.prisma.statusHistory.create({
-        data: {
-          slackId,
-          statusText: user.currentStatusText,
-          statusEmoji: user.currentStatusEmoji,
-          isBusy: user.isBusy,
-          isDnd,
-        },
+        data: { slackId, statusText, statusEmoji },
       }),
     ]);
   }

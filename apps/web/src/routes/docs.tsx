@@ -60,7 +60,7 @@ const sections: { title: string; endpoints: Endpoint[] }[] = [
         method: "GET",
         path: "/me/status-history",
         auth: "jwt",
-        description: "Your own status history (status text, emoji, busy, DND).",
+        description: "Your own status history (status text, emoji).",
         params: [
           { name: "from", type: "ISO datetime", desc: "Start of range" },
           { name: "to", type: "ISO datetime", desc: "End of range" },
@@ -171,7 +171,7 @@ const sections: { title: string; endpoints: Endpoint[] }[] = [
         method: "GET",
         path: "/admin/users/:slack_id/status-history",
         auth: "api-key-or-jwt",
-        description: "Status history records (status text, emoji, busy, DND).",
+        description: "Status history records (status text, emoji).",
         params: [
           { name: "from", type: "ISO datetime", desc: "Start of range" },
           { name: "to", type: "ISO datetime", desc: "End of range" },
@@ -237,17 +237,6 @@ const sections: { title: string; endpoints: Endpoint[] }[] = [
           { name: "to", type: "ISO datetime", desc: "End of range" },
         ],
         curl: `curl "${BASE}/admin/reports/availability?from=2026-05-01" ${API_KEY_AUTH}`,
-      },
-      {
-        method: "GET",
-        path: "/admin/reports/dnd-patterns",
-        auth: "api-key-or-jwt",
-        description: "DND frequency and average duration per user.",
-        params: [
-          { name: "from", type: "ISO datetime", desc: "Start of range" },
-          { name: "to", type: "ISO datetime", desc: "End of range" },
-        ],
-        curl: `curl "${BASE}/admin/reports/dnd-patterns?from=2026-05-01" ${API_KEY_AUTH}`,
       },
       {
         method: "GET",

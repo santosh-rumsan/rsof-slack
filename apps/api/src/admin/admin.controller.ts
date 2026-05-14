@@ -155,14 +155,6 @@ export class AdminController {
     }));
   }
 
-  @Get('reports/dnd-patterns')
-  reportDndPatterns(@Query('from') from?: string, @Query('to') to?: string) {
-    return this.admin.reportDndPatterns(
-      from ? new Date(from) : undefined,
-      to ? new Date(to) : undefined,
-    );
-  }
-
   @Get('reports/status-trends')
   reportStatusTrends(
     @Query('from') from?: string,

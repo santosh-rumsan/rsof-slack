@@ -52,8 +52,6 @@ export interface SlackUser {
   current_presence: "active" | "away" | null;
   current_status_text: string | null;
   current_status_emoji: string | null;
-  is_busy: boolean;
-  is_dnd: boolean;
   last_presence_update: string | null;
   created_at: string;
   updated_at: string;
@@ -72,8 +70,6 @@ export interface StatusHistory {
   slack_id: string;
   status_text: string | null;
   status_emoji: string | null;
-  is_busy: boolean;
-  is_dnd: boolean;
   recorded_at: string;
 }
 
@@ -109,14 +105,6 @@ export interface AvailabilityRow {
   real_name: string | null;
   display_name: string | null;
   availability_pct: number;
-}
-
-export interface DndPatternRow {
-  slack_id: string;
-  real_name: string | null;
-  display_name: string | null;
-  dnd_count: number;
-  avg_duration_seconds: number | null;
 }
 
 export interface StatusTrendRow {
@@ -216,12 +204,6 @@ export const admin = {
     if (from) qs.set("from", from);
     if (to) qs.set("to", to);
     return request<AvailabilityRow[]>(`/admin/reports/availability?${qs}`);
-  },
-  dndPatterns: (from?: string, to?: string) => {
-    const qs = new URLSearchParams();
-    if (from) qs.set("from", from);
-    if (to) qs.set("to", to);
-    return request<DndPatternRow[]>(`/admin/reports/dnd-patterns?${qs}`);
   },
   statusTrends: (from?: string, to?: string, limit = 20) => {
     const qs = new URLSearchParams({ limit: String(limit) });

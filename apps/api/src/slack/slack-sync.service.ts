@@ -108,7 +108,6 @@ export class SlackSyncService {
         const presence: string = resp.presence;
 
         if (presence && presence !== user.currentPresence) {
-          // Trigger the same upsert logic as RTM via a direct DB write + event
           const fullUser = await this.prisma.slackUser.findUnique({
             where: { slackId: user.slackId },
           });

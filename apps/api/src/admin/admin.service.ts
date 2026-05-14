@@ -65,8 +65,6 @@ export class AdminService {
       slack_id: r.slackId,
       status_text: r.statusText,
       status_emoji: r.statusEmoji,
-      is_busy: r.isBusy,
-      is_dnd: r.isDnd,
       recorded_at: r.recordedAt,
     }));
   }
@@ -179,34 +177,6 @@ export class AdminService {
     `);
   }
 
-  async reportDndPatterns(from?: Date, to?: Date) {
-    const fromClause = from ? Prisma.sql`AND recorded_at >= ${from}` : Prisma.sql``;
-    const toClause = to ? Prisma.sql`AND recorded_at <= ${to}` : Prisma.sql``;
-
-    return this.prisma.$queryRaw<any[]>(Prisma.sql`
-      WITH dnd_sessions AS (
-        SELECT
-          slack_id,
-          recorded_at,
-          LEAD(recorded_at) OVER (PARTITION BY slack_id ORDER BY recorded_at) AS next_at
-        FROM status_history
-        WHERE is_dnd = true
-        ${fromClause}
-        ${toClause}
-      )
-      SELECT
-        d.slack_id,
-        u.real_name,
-        u.display_name,
-        COUNT(*) AS dnd_count,
-        AVG(EXTRACT(EPOCH FROM (COALESCE(next_at, NOW()) - recorded_at))) AS avg_duration_seconds
-      FROM dnd_sessions d
-      JOIN slack_users u ON u.slack_id = d.slack_id
-      GROUP BY d.slack_id, u.real_name, u.display_name
-      ORDER BY dnd_count DESC
-    `);
-  }
-
   async reportStatusTrends(from?: Date, to?: Date, limit = 20) {
     const fromClause = from ? Prisma.sql`AND recorded_at >= ${from}` : Prisma.sql``;
     const toClause = to ? Prisma.sql`AND recorded_at <= ${to}` : Prisma.sql``;
@@ -252,8 +222,6 @@ function mapUser(u: any) {
     current_presence: u.currentPresence,
     current_status_text: u.currentStatusText,
     current_status_emoji: u.currentStatusEmoji,
-    is_busy: u.isBusy,
-    is_dnd: u.isDnd,
     last_presence_update: u.lastPresenceUpdate,
     created_at: u.createdAt,
     updated_at: u.updatedAt,

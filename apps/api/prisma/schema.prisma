@@ -17,8 +17,6 @@ model SlackUser {
   currentPresence    String?   @map("current_presence")
   currentStatusText  String?   @map("current_status_text")
   currentStatusEmoji String?   @map("current_status_emoji")
-  isBusy             Boolean   @default(false) @map("is_busy")
-  isDnd              Boolean   @default(false) @map("is_dnd")
   lastPresenceUpdate DateTime? @map("last_presence_update") @db.Timestamptz
   createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -48,8 +46,6 @@ model StatusHistory {
   slackId     String   @map("slack_id")
   statusText  String?  @map("status_text")
   statusEmoji String?  @map("status_emoji")
-  isBusy      Boolean  @default(false) @map("is_busy")
-  isDnd       Boolean  @default(false) @map("is_dnd")
   recordedAt  DateTime @default(now()) @map("recorded_at") @db.Timestamptz
 
   user SlackUser @relation(fields: [slackId], references: [slackId])

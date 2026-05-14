@@ -305,14 +305,6 @@ function UserDetailPage() {
               {user.current_status_emoji} {user.current_status_text}
             </p>
           )}
-          <div className="mt-2 flex gap-2">
-            {user.is_dnd && (
-              <span className="rounded bg-orange-100 px-2 py-0.5 text-xs text-orange-700">DnD</span>
-            )}
-            {user.is_busy && (
-              <span className="rounded bg-red-100 px-2 py-0.5 text-xs text-red-700">Busy</span>
-            )}
-          </div>
         </div>
         <div className="text-right">
           <p className="text-xs text-gray-400">Availability (week)</p>

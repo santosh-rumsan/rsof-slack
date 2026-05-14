@@ -90,8 +90,6 @@ function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-gray-600 max-w-xs truncate">
                     {u.current_status_emoji} {u.current_status_text ?? "—"}
-                    {u.is_dnd && <span className="ml-2 rounded bg-orange-100 px-1 text-xs text-orange-700">DnD</span>}
-                    {u.is_busy && <span className="ml-2 rounded bg-red-100 px-1 text-xs text-red-700">Busy</span>}
                   </td>
                   <td className="px-4 py-3">
                     <PresenceBadge presence={u.current_presence} />
