@@ -13,6 +13,22 @@ const JOB_LABELS: Record<string, string> = {
   user_mapping_sync: "User Mapping Sync",
 };
 
+function decimalToTime(val: string): string {
+  const num = parseFloat(val);
+  if (isNaN(num)) return "";
+  const h = Math.floor(num);
+  const m = Math.round((num - h) * 60);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function timeToDecimal(val: string): string {
+  const [hStr, mStr] = val.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  if (isNaN(h) || isNaN(m)) return val;
+  return String(h + m / 60);
+}
+
 function fmtTime(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString();
@@ -57,7 +73,10 @@ function SettingsPage() {
       .then((s) => {
         setAppSettings(s);
         const map: Record<string, string> = {};
-        for (const { key, value } of s) map[key] = value;
+        for (const { key, value } of s) {
+          const meta = SETTING_META[key];
+          map[key] = meta?.type === "time" ? decimalToTime(value) : value;
+        }
         setEdited(map);
       })
       .catch(() => {})
@@ -69,10 +88,11 @@ function SettingsPage() {
     setSaving(true);
     setSaveMsg(null);
     try {
-      const entries = appSettings.map(({ key }) => ({
-        key,
-        value: edited[key] ?? "",
-      }));
+      const entries = appSettings.map(({ key }) => {
+        const meta = SETTING_META[key];
+        const val = edited[key] ?? "";
+        return { key, value: meta?.type === "time" ? timeToDecimal(val) : val };
+      });
       await admin.updateSettings(entries);
       setSaveMsg("Settings saved.");
     } catch (err: any) {
@@ -114,22 +134,47 @@ function SettingsPage() {
                     <p className="text-[10px] text-gray-300 font-mono mt-0.5">{key}</p>
                   </div>
                   <div className="relative">
-                    <input
-                      id={key}
-                      type={meta.type === "password" && !revealed[key] ? "password" : meta.type === "number" ? "number" : "text"}
-                      value={edited[key] ?? ""}
-                      onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
-                      className={`rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30 ${meta.type === "password" ? "pr-8" : ""}`}
-                    />
-                    {meta.type === "password" && (
-                      <button
-                        type="button"
-                        onClick={() => setRevealed((prev) => ({ ...prev, [key]: !prev[key] }))}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        tabIndex={-1}
+                    {meta.type === "timezone" ? (
+                      <select
+                        id={key}
+                        value={edited[key] ?? ""}
+                        onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
+                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30"
                       >
-                        {revealed[key] ? <EyeOff size={15} /> : <Eye size={15} />}
-                      </button>
+                        {(Intl as any).supportedValuesOf("timeZone").map((tz: string) => (
+                          <option key={tz} value={tz}>{tz}</option>
+                        ))}
+                      </select>
+                    ) : meta.type === "time" ? (
+                      <input
+                        id={key}
+                        type="time"
+                        step="900"
+                        value={edited[key] ?? ""}
+                        onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
+                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30"
+                      />
+                    ) : (
+                      <>
+                        <input
+                          id={key}
+                          type={meta.type === "password" && !revealed[key] ? "password" : meta.type === "number" ? "number" : "text"}
+                          step={meta.type === "number" ? (meta.step ?? 1) : undefined}
+                          value={edited[key] ?? ""}
+                          onChange={(e) => setEdited((prev) => ({ ...prev, [key]: e.target.value }))}
+                          className={`rounded-lg border border-gray-200 px-3 py-1.5 text-sm w-full focus:outline-none focus:ring-2 focus:ring-brand/30 ${meta.type === "password" ? "pr-8" : ""}`}
+                        />
+                        {meta.type === "password" && (
+                          <button
+                            type="button"
+                            onClick={() => setRevealed((prev) => ({ ...prev, [key]: !prev[key] }))}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            tabIndex={-1}
+                          >
+                            {revealed[key] ? <EyeOff size={15} /> : <Eye size={15} />}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>

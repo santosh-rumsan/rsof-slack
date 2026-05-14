@@ -25,6 +25,16 @@ export interface StatusEvent {
 
 export type ActivityEvent = PresenceEvent | StatusEvent;
 
+const PRESENCE_STORAGE_KEY = "rsof_presence_state";
+
+function loadFromStorage(): { events: ActivityEvent[]; presenceMap: Record<string, "active" | "away"> } {
+  try {
+    const raw = localStorage.getItem(PRESENCE_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return { events: [], presenceMap: {} };
+}
+
 interface PresenceState {
   events: ActivityEvent[];
   presenceMap: Record<string, "active" | "away">;
@@ -42,9 +52,14 @@ export function usePresence() {
 }
 
 export function PresenceProvider({ children }: { children: React.ReactNode }) {
-  const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const [presenceMap, setPresenceMap] = useState<Record<string, "active" | "away">>({});
+  const stored = loadFromStorage();
+  const [events, setEvents] = useState<ActivityEvent[]>(stored.events);
+  const [presenceMap, setPresenceMap] = useState<Record<string, "active" | "away">>(stored.presenceMap);
   const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem(PRESENCE_STORAGE_KEY, JSON.stringify({ events, presenceMap }));
+  }, [events, presenceMap]);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {

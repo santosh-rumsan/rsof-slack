@@ -100,10 +100,10 @@ export function LoginScreen({ onSuccess }: LoginScreenProps) {
     <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm rounded-xl border bg-white p-8 shadow-sm">
         <div className="mb-6 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand text-white font-bold text-xl">
-            S
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center">
+            <img src="/slack.svg" alt="Slack" className="h-12 w-12" />
           </div>
-          <h1 className="text-xl font-semibold text-gray-900">rsof-slack</h1>
+          <h1 className="text-xl font-semibold text-gray-900">Rumsan Slack</h1>
           <p className="mt-1 text-sm text-gray-500">Sign in with your Google account to continue</p>
         </div>
 

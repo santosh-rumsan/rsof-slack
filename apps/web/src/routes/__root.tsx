@@ -23,10 +23,10 @@ function Layout() {
           </div>
           <nav className="flex flex-col gap-1 p-3 flex-1">
             <NavLink to="/" icon={<LayoutDashboard size={16} />} label="Dashboard" />
+            <NavLink to="/presence" icon={<Radio size={16} />} label="Presence" />
             <NavLink to="/users" icon={<Users size={16} />} label="Users" />
             <NavLink to="/reports" icon={<BarChart2 size={16} />} label="Reports" />
             <NavLink to="/activity" icon={<Activity size={16} />} label="Activity" />
-            <NavLink to="/presence" icon={<Radio size={16} />} label="Presence" />
             <NavLink to="/docs" icon={<BookOpen size={16} />} label="Docs" />
             <NavLink to="/settings" icon={<Settings size={16} />} label="Settings" />
           </nav>

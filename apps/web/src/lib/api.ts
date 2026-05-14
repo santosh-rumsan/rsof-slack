@@ -149,16 +149,16 @@ export interface AppSetting {
 }
 
 // Human-readable metadata for each setting key
-export const SETTING_META: Record<string, { label: string; description: string; type: 'text' | 'number' | 'password' }> = {
-  USER_MGMT_API_URL:           { label: 'User Mgmt API URL',          description: 'External user management API endpoint',         type: 'text' },
-  USER_MGMT_API_KEY:           { label: 'User Mgmt API Key',          description: 'Bearer token for the user management API',       type: 'password' },
-  USER_SYNC_INTERVAL:          { label: 'User Sync Interval (min)',   description: 'How often to sync Slack users (minutes)',         type: 'number' },
-  PRESENCE_RECONCILE_INTERVAL: { label: 'Presence Reconcile (min)',   description: 'Poll interval when RTM is disconnected (minutes)', type: 'number' },
-  USER_MAPPING_SYNC_INTERVAL:  { label: 'User Mapping Sync (min)',    description: 'How often to sync user mappings (minutes)',       type: 'number' },
-  API_KEY:                     { label: 'Admin API Key',              description: 'Secret key for admin API access',                type: 'password' },
-  TIMEZONE:                    { label: 'Timezone',                   description: 'Timezone for report calculations (e.g. Asia/Kathmandu)', type: 'text' },
-  WORK_START_HOUR:             { label: 'Work Start Hour',            description: 'Start of work day (0–23, used in reports)',      type: 'number' },
-  WORK_END_HOUR:               { label: 'Work End Hour',              description: 'End of work day (0–23, exclusive)',              type: 'number' },
+export const SETTING_META: Record<string, { label: string; description: string; type: 'text' | 'number' | 'password' | 'time' | 'timezone'; step?: number }> = {
+  USER_MGMT_API_URL:           { label: 'User Mgmt API URL',         description: 'External user management API endpoint',                type: 'text' },
+  USER_MGMT_API_KEY:           { label: 'User Mgmt API Key',         description: 'Bearer token for the user management API',             type: 'password' },
+  USER_SYNC_INTERVAL:          { label: 'User Sync Interval (min)',  description: 'How often to sync Slack users (minutes)',              type: 'number' },
+  PRESENCE_RECONCILE_INTERVAL: { label: 'Presence Reconcile (min)', description: 'Poll interval when RTM is disconnected (minutes)',     type: 'number' },
+  USER_MAPPING_SYNC_INTERVAL:  { label: 'User Mapping Sync (min)',  description: 'How often to sync user mappings (minutes)',            type: 'number' },
+  API_KEY:                     { label: 'Admin API Key',             description: 'Secret key for admin API access',                     type: 'password' },
+  TIMEZONE:                    { label: 'Timezone',                  description: 'Timezone for report calculations',                    type: 'timezone' },
+  WORK_START_HOUR:             { label: 'Work Start Time',           description: 'Start of work day (stored as decimal hours)',         type: 'time' },
+  WORK_END_HOUR:               { label: 'Work End Time',             description: 'End of work day (stored as decimal hours)',           type: 'time' },
 };
 
 // ---------------------------------------------------------------------------

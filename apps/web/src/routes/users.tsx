@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { admin, type SlackUser } from "@/lib/api";
 import { PresenceBadge } from "@/components/presence-badge";
@@ -8,6 +8,7 @@ export const Route = createFileRoute("/users")({
 });
 
 function UsersPage() {
+  const navigate = useNavigate();
   const [users, setUsers] = useState<SlackUser[]>([]);
   const [search, setSearch] = useState("");
   const [presenceFilter, setPresenceFilter] = useState<"" | "active" | "away">("");
@@ -72,7 +73,11 @@ function UsersPage() {
             </thead>
             <tbody className="divide-y">
               {filtered.map((u) => (
-                <tr key={u.slack_id} className="hover:bg-gray-50">
+                <tr
+                  key={u.slack_id}
+                  className="hover:bg-gray-50 cursor-pointer"
+                  onClick={() => navigate({ to: "/users/$slackId", params: { slackId: u.slack_id } })}
+                >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       {u.avatar_url ? (

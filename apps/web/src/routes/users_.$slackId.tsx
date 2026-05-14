@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { admin, settings, type SlackUser, type PresenceHistory, type StatusHistory, type DurationSummary } from "@/lib/api";
 import { PresenceBadge } from "@/components/presence-badge";
 import { usePresence } from "@/lib/presence-context";
@@ -9,8 +9,8 @@ export const Route = createFileRoute("/users_/$slackId")({
   component: UserDetailPage,
 });
 
-const ENV_WORK_START = parseInt(import.meta.env.VITE_WORK_START_HOUR ?? "7");
-const ENV_WORK_END = parseInt(import.meta.env.VITE_WORK_END_HOUR ?? "23");
+const ENV_WORK_START = parseFloat(import.meta.env.VITE_WORK_START_HOUR ?? "7");
+const ENV_WORK_END = parseFloat(import.meta.env.VITE_WORK_END_HOUR ?? "23");
 
 interface Segment {
   startPct: number;
@@ -48,8 +48,12 @@ function buildDaySegments(
   const y = date.getFullYear();
   const m = date.getMonth();
   const d = date.getDate();
-  const windowStart = new Date(y, m, d, workStart, 0, 0, 0).getTime();
-  const rawWindowEnd = new Date(y, m, d, workEnd, 0, 0, 0).getTime();
+  const startH = Math.floor(workStart);
+  const startM = Math.round((workStart - startH) * 60);
+  const endH = Math.floor(workEnd);
+  const endM = Math.round((workEnd - endH) * 60);
+  const windowStart = new Date(y, m, d, startH, startM, 0, 0).getTime();
+  const rawWindowEnd = new Date(y, m, d, endH, endM, 0, 0).getTime();
 
   // Future days: no data
   if (windowStart > now) return [];
@@ -112,6 +116,12 @@ function buildDaySegments(
   }
 
   return segments;
+}
+
+function fmtDecimalHour(h: number): string {
+  const hours = Math.floor(h);
+  const minutes = Math.round((h - hours) * 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 function fmtDuration(seconds: number): string {
@@ -183,6 +193,94 @@ function getWeekDays(weekOffset: number): Date[] {
   });
 }
 
+function TimelineBar({
+  segments,
+  hours,
+  workStart,
+  workEnd,
+}: {
+  segments: Segment[];
+  hours: number[];
+  workStart: number;
+  workEnd: number;
+}) {
+  const [hoverPct, setHoverPct] = useState<number | null>(null);
+  const [clickTooltip, setClickTooltip] = useState<{ pct: number; text: string } | null>(null);
+
+  function pctToTime(pct: number): string {
+    const absMin = Math.round(workStart * 60) + Math.round((pct / 100) * (workEnd - workStart) * 60);
+    const h = Math.floor(absMin / 60);
+    const m = absMin % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    setHoverPct(Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100)));
+  }
+
+  function handleSegmentClick(e: React.MouseEvent, seg: Segment) {
+    if (!seg.statusText && !seg.statusEmoji) return;
+    e.stopPropagation();
+    const rect = (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect();
+    const pct = Math.max(2, Math.min(98, ((e.clientX - rect.left) / rect.width) * 100));
+    const emoji = seg.statusEmoji ? renderSlackEmoji(seg.statusEmoji) : "";
+    const text = seg.statusText ? renderSlackEmoji(seg.statusText) : "";
+    setClickTooltip({ pct, text: `${emoji} ${text}`.trim() });
+  }
+
+  return (
+    <div className="relative flex-1" onClick={() => setClickTooltip(null)}>
+      <div
+        className="relative h-7 bg-gray-100 rounded overflow-hidden cursor-crosshair"
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoverPct(null)}
+      >
+        {hours.filter((h) => h > workStart && h < workEnd).map((h) => (
+          <div
+            key={h}
+            className="absolute top-0 bottom-0 w-px bg-white/60"
+            style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
+          />
+        ))}
+        {segments.map((seg, si) => (
+          <div
+            key={si}
+            className={`absolute top-0 bottom-0 ${segmentColor(seg.presence)} ${seg.statusText || seg.statusEmoji ? "cursor-pointer" : ""}`}
+            style={{ left: `${seg.startPct}%`, width: `${seg.widthPct}%` }}
+            title={buildTooltip(seg)}
+            onClick={(e) => handleSegmentClick(e, seg)}
+          />
+        ))}
+        {hoverPct !== null && (
+          <div
+            className="absolute top-0 bottom-0 w-px bg-gray-600 pointer-events-none z-10"
+            style={{ left: `${hoverPct}%` }}
+          />
+        )}
+      </div>
+      {hoverPct !== null && (
+        <div
+          className="absolute -translate-x-1/2 pointer-events-none z-20"
+          style={{ left: `${hoverPct}%`, bottom: "calc(100% + 2px)" }}
+        >
+          <span className="text-[10px] bg-gray-800 text-white px-1.5 py-0.5 rounded whitespace-nowrap">
+            {pctToTime(hoverPct)}
+          </span>
+        </div>
+      )}
+      {clickTooltip && (
+        <div
+          className="absolute -translate-x-1/2 z-30 bg-white border rounded shadow-md px-2 py-1 text-xs text-gray-700 whitespace-nowrap"
+          style={{ left: `${clickTooltip.pct}%`, top: "calc(100% + 4px)" }}
+        >
+          {clickTooltip.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Timeline({
   history,
   statusHistory,
@@ -207,7 +305,7 @@ function Timeline({
   const isCurrentWeek = weekOffset === 0;
 
   const hours: number[] = [];
-  for (let h = workStart; h <= workEnd; h += 2) hours.push(h);
+  for (let h = Math.ceil(workStart); h <= Math.floor(workEnd); h += 1) hours.push(h);
 
   const weekLabel = `${from.toLocaleDateString([], { month: "short", day: "numeric" })} – ${to.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
 
@@ -219,7 +317,7 @@ function Timeline({
           <span className="text-xs text-gray-400">{weekLabel}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">{workStart}:00 – {workEnd}:00</span>
+          <span className="text-xs text-gray-400">{fmtDecimalHour(workStart)} – {fmtDecimalHour(workEnd)}</span>
           <button
             onClick={onPrev}
             disabled={loading}
@@ -256,23 +354,7 @@ function Timeline({
           return (
             <div key={di} className="flex items-center gap-3">
               <DayLabel date={date} />
-              <div className="relative flex-1 h-7 bg-gray-100 rounded overflow-hidden">
-                {hours.slice(1, -1).map((h) => (
-                  <div
-                    key={h}
-                    className="absolute top-0 bottom-0 w-px bg-white/60"
-                    style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
-                  />
-                ))}
-                {segments.map((seg, si) => (
-                  <div
-                    key={si}
-                    className={`absolute top-0 bottom-0 ${segmentColor(seg.presence)}`}
-                    style={{ left: `${seg.startPct}%`, width: `${seg.widthPct}%` }}
-                    title={buildTooltip(seg)}
-                  />
-                ))}
-              </div>
+              <TimelineBar segments={segments} hours={hours} workStart={workStart} workEnd={workEnd} />
               <div className="flex gap-2 flex-shrink-0 w-[180px]">
                 <span className="text-xs text-green-600 w-14 text-right font-mono">
                   {activeSec > 0 ? fmtDuration(activeSec) : "—"}
@@ -290,12 +372,12 @@ function Timeline({
       </div>
 
       {/* Hour labels */}
-      <div className="flex ml-[96px]">
+      <div className="relative ml-[96px] mr-[192px] h-4">
         {hours.map((h) => (
           <span
             key={h}
-            className="text-[10px] text-gray-400 flex-1 text-left"
-            style={{ position: "relative", marginLeft: h === workStart ? "0" : undefined }}
+            className="absolute text-[10px] text-gray-400 -translate-x-1/2"
+            style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
           >
             {h}
           </span>
@@ -342,8 +424,8 @@ function UserDetailPage() {
     settings.getPublic().then((s) => {
       const start = s.find((x) => x.key === "WORK_START_HOUR");
       const end = s.find((x) => x.key === "WORK_END_HOUR");
-      if (start) setWorkStart(parseInt(start.value, 10));
-      if (end) setWorkEnd(parseInt(end.value, 10));
+      if (start) setWorkStart(parseFloat(start.value));
+      if (end) setWorkEnd(parseFloat(end.value));
     }).catch(() => {});
   }, []);
 
