@@ -17,3 +17,6 @@ apps/api/prisma/migrations/
 # Build artifacts
 apps/web/dist/
 apps/api/dist/
+
+# Logs
+.logs/

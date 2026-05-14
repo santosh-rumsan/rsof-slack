@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { getJwt } from "@/lib/api";
 
 export interface PresenceEvent {
   slack_id: string;
@@ -38,7 +39,7 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     async function connect() {
       try {
         const res = await fetch("/api/v1/admin/events/presence", {
-          headers: { "X-API-Key": localStorage.getItem("rsof_slack_api_key") ?? "" },
+          headers: { Authorization: `Bearer ${getJwt()}` },
         });
         if (!res.ok || !active) return;
         setConnected(true);

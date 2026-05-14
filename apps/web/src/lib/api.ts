@@ -1,21 +1,21 @@
 // API client — typed fetch wrapper
 
-const API_KEY_STORAGE = "rsof_slack_api_key";
+const JWT_STORAGE = "rsof_slack_jwt";
 
-function getApiKey(): string {
-  return localStorage.getItem(API_KEY_STORAGE) ?? "";
+export function getJwt(): string {
+  return localStorage.getItem(JWT_STORAGE) ?? "";
 }
 
-export function setApiKey(key: string): void {
-  localStorage.setItem(API_KEY_STORAGE, key);
+export function setJwt(token: string): void {
+  localStorage.setItem(JWT_STORAGE, token);
 }
 
-export function clearApiKey(): void {
-  localStorage.removeItem(API_KEY_STORAGE);
+export function clearJwt(): void {
+  localStorage.removeItem(JWT_STORAGE);
 }
 
 export function isAuthenticated(): boolean {
-  return !!getApiKey();
+  return !!getJwt();
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -23,14 +23,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...options,
     headers: {
       "Content-Type": "application/json",
-      "X-API-Key": getApiKey(),
+      Authorization: `Bearer ${getJwt()}`,
       ...(options.headers ?? {}),
     },
   });
   if (!res.ok) {
     const text = await res.text();
     if (res.status === 401) {
-      clearApiKey();
+      clearJwt();
       window.dispatchEvent(new Event("rsof:unauthorized"));
     }
     throw new Error(`${res.status}: ${text}`);

@@ -1,12 +1,16 @@
 import { createRootRoute, Link, Outlet } from "@tanstack/react-router";
-import { AuthProvider, useAuth, LoginScreen } from "@/lib/auth";
+import { GoogleOAuthProvider } from "@react-oauth/google";
+import { AuthProvider, useAuth } from "@/lib/auth";
 import { PresenceProvider } from "@/lib/presence-context";
 import { PresenceToaster } from "@/components/presence-toast";
 import { LayoutDashboard, Users, BarChart2, LogOut, Activity, BookOpen, Radio } from "lucide-react";
+import React from "react";
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
 
 function Layout() {
   const { authed, logout } = useAuth();
-  if (!authed) return <LoginScreen />;
+  if (!authed) return null; // AuthProvider renders LoginScreen when not authed
 
   return (
     <PresenceProvider>
@@ -55,12 +59,12 @@ function NavLink({ to, icon, label }: { to: string; icon: React.ReactNode; label
   );
 }
 
-import React from "react";
-
 export const Route = createRootRoute({
   component: () => (
-    <AuthProvider>
-      <Layout />
-    </AuthProvider>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <AuthProvider>
+        <Layout />
+      </AuthProvider>
+    </GoogleOAuthProvider>
   ),
 });

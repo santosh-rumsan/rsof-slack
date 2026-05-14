@@ -10,7 +10,7 @@ import {
   MessageEvent,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
-import { ApiKeyGuard } from '../auth/api-key.guard';
+import { ApiKeyOrJwtAdminGuard } from '../auth/api-key-or-jwt-admin.guard';
 import { AdminService } from './admin.service';
 import { EventsService } from '../events/events.service';
 import { SlackSyncService } from '../slack/slack-sync.service';
@@ -18,7 +18,7 @@ import { UserMappingSyncService } from '../slack/user-mapping-sync.service';
 import { SchedulerJobsService } from '../slack/scheduler-jobs.service';
 
 @Controller('admin')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyOrJwtAdminGuard)
 export class AdminController {
   constructor(
     private admin: AdminService,

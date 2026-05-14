@@ -1,0 +1,13 @@
+diff --git a/dist/RTMClient.js b/dist/RTMClient.js
+index 0c7ee85ea5dc97ff008d2d7afa43bf76075c70d0..1f510d9cba862f2b0b5719ef6f12bc567169acf2 100644
+--- a/dist/RTMClient.js
++++ b/dist/RTMClient.js
+@@ -373,7 +373,7 @@ class RTMClient extends eventemitter3_1.EventEmitter {
+                 const flatMessage = JSON.stringify(message);
+                 this.logger.debug(`sending message on websocket: ${flatMessage}`);
+                 this.websocket.send(flatMessage, (error) => {
+-                    if (error !== undefined) {
++                    if (error) {
+                         this.logger.error(`failed to send message on websocket: ${error.message}`);
+                         return reject(errors_1.websocketErrorWithOriginal(error));
+                     }

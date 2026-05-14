@@ -7,9 +7,19 @@ import { ConfigService } from '@nestjs/config';
 import { RTMClient } from '@slack/rtm-api';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
+import * as fs from 'fs';
+import * as path from 'path';
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+const LOG_FILE = path.resolve(process.cwd(), '.logs', 'rtm-connection.log');
+
+function appendRtmLog(event: string): void {
+  const line = `${new Date().toISOString()} [RTM] ${event}\n`;
+  fs.mkdirSync(path.dirname(LOG_FILE), { recursive: true });
+  fs.appendFileSync(LOG_FILE, line);
 }
 
 @Injectable()
@@ -35,18 +45,28 @@ export class RtmService implements OnApplicationShutdown {
     this.rtm.on('connected', async () => {
       this.connected = true;
       this.logger.log('RTM WebSocket connected');
-      await this.resubscribeAll();
+      appendRtmLog('connected');
+      try {
+        await this.resubscribeAll();
+      } catch (e) {
+        this.logger.error('resubscribeAll failed after reconnect: ' + e.message);
+      }
     });
 
     this.rtm.on('disconnected', () => {
       this.connected = false;
       this.logger.warn('RTM disconnected');
+      appendRtmLog('disconnected');
     });
 
     this.rtm.on('presence_change', async (event: any) => {
       this.logger.debug(`presence_change: ${event.user} -> ${event.presence}`);
       if (event.user && event.presence) {
-        await this.upsertPresenceChange(event.user, event.presence, 'rtm');
+        try {
+          await this.upsertPresenceChange(event.user, event.presence, 'rtm');
+        } catch (e) {
+          this.logger.error(`presence_change upsert failed: ${e.message}`);
+        }
       }
     });
 
@@ -55,13 +75,17 @@ export class RtmService implements OnApplicationShutdown {
       const slackId: string = user.id;
       if (!slackId) return;
       const profile = user.profile || {};
-      await this.upsertStatusChange(
-        slackId,
-        profile.status_text || '',
-        profile.status_emoji || '',
-        !!profile.huddle_state,
-        false,
-      );
+      try {
+        await this.upsertStatusChange(
+          slackId,
+          profile.status_text || '',
+          profile.status_emoji || '',
+          !!profile.huddle_state,
+          false,
+        );
+      } catch (e) {
+        this.logger.error(`user_change upsert failed for ${slackId}: ${e.message}`);
+      }
     });
 
     this.rtm.on('dnd_updated_user', async (event: any) => {
@@ -69,7 +93,11 @@ export class RtmService implements OnApplicationShutdown {
       if (!slackId) return;
       const dnd = event.dnd_status || {};
       const isDnd = !!(dnd.dnd_enabled && dnd.next_dnd_start_ts > 0);
-      await this.upsertDndChange(slackId, isDnd);
+      try {
+        await this.upsertDndChange(slackId, isDnd);
+      } catch (e) {
+        this.logger.error(`dnd_updated_user upsert failed for ${slackId}: ${e.message}`);
+      }
     });
 
     this.rtm.start().catch((e) => {
