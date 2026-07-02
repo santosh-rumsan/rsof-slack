@@ -12,13 +12,22 @@ export const Route = createFileRoute("/users_/$slackId")({
 const ENV_WORK_START = parseFloat(import.meta.env.VITE_WORK_START_HOUR ?? "7");
 const ENV_WORK_END = parseFloat(import.meta.env.VITE_WORK_END_HOUR ?? "23");
 
+// Fixed display window — timeline bar always shows 8:00 to 23:30
+const DISPLAY_START = 8;
+const DISPLAY_END = 23.5;
+const DISPLAY_DURATION_MS = (DISPLAY_END - DISPLAY_START) * 3600000;
+
 interface Segment {
   startPct: number;
   widthPct: number;
+  startMs: number;
+  endMs: number;
   presence: "active" | "away" | "unknown";
   /** Status text active at the start of this segment, if any */
   statusText: string | null;
   statusEmoji: string | null;
+  /** True when segment falls outside the configured work hours */
+  isOffHours: boolean;
 }
 
 function localToUtcMs(dateStr: string, hour: number, tz: string): number {
@@ -65,27 +74,27 @@ function buildDaySegments(
   timezone?: string | null,
 ): Segment[] {
   const now = Date.now();
-  const workDurationMs = (workEnd - workStart) * 60 * 60 * 1000;
   const y = date.getFullYear();
   const mo = date.getMonth();
   const d = date.getDate();
   const dateStr = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
-  const windowStart = timezone
-    ? localToUtcMs(dateStr, workStart, timezone)
-    : new Date(y, mo, d, Math.floor(workStart), Math.round((workStart % 1) * 60), 0, 0).getTime();
-  const rawWindowEnd = timezone
-    ? localToUtcMs(dateStr, workEnd, timezone)
-    : new Date(y, mo, d, Math.floor(workEnd), Math.round((workEnd % 1) * 60), 0, 0).getTime();
+  function toMs(hour: number) {
+    return timezone
+      ? localToUtcMs(dateStr, hour, timezone)
+      : new Date(y, mo, d, Math.floor(hour), Math.round((hour % 1) * 60), 0, 0).getTime();
+  }
+
+  const windowStart = toMs(DISPLAY_START);
+  const rawWindowEnd = toMs(DISPLAY_END);
+  const workStartMs = toMs(workStart);
+  const workEndMs = toMs(workEnd);
 
   // Future days: no data
   if (windowStart > now) return [];
 
-  // Today: cap at current time
   const windowEnd = Math.min(rawWindowEnd, now);
-  const dayMidnight = timezone
-    ? localToUtcMs(dateStr, 0, timezone)
-    : new Date(y, mo, d, 0, 0, 0, 0).getTime();
+  const dayMidnight = toMs(0);
   const nextMidnight = dayMidnight + 86400000;
 
   // Events strictly in this calendar day, ascending
@@ -96,7 +105,7 @@ function buildDaySegments(
     })
     .sort((a, b) => new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime());
 
-  // State just before window starts
+  // State just before display window starts
   const prior = history
     .filter((e) => new Date(e.recorded_at).getTime() < windowStart)
     .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
@@ -104,7 +113,8 @@ function buildDaySegments(
   let state: "active" | "away" | "unknown" =
     prior.length > 0 ? (prior[0].presence as "active" | "away") : "unknown";
 
-  const segments: Segment[] = [];
+  type Raw = { startMs: number; endMs: number; presence: "active" | "away" | "unknown"; statusText: string | null; statusEmoji: string | null };
+  const rawSegs: Raw[] = [];
   let cursor = windowStart;
 
   for (const ev of dayEvents) {
@@ -116,13 +126,7 @@ function buildDaySegments(
     const segEnd = Math.min(evMs, windowEnd);
     if (segEnd > cursor) {
       const { text, emoji } = statusAtTime(statusHistory, cursor);
-      segments.push({
-        startPct: ((cursor - windowStart) / workDurationMs) * 100,
-        widthPct: ((segEnd - cursor) / workDurationMs) * 100,
-        presence: state,
-        statusText: text,
-        statusEmoji: emoji,
-      });
+      rawSegs.push({ startMs: cursor, endMs: segEnd, presence: state, statusText: text, statusEmoji: emoji });
     }
     state = ev.presence as "active" | "away";
     cursor = evMs;
@@ -131,13 +135,31 @@ function buildDaySegments(
 
   if (cursor < windowEnd) {
     const { text, emoji } = statusAtTime(statusHistory, cursor);
-    segments.push({
-      startPct: ((cursor - windowStart) / workDurationMs) * 100,
-      widthPct: ((windowEnd - cursor) / workDurationMs) * 100,
-      presence: state,
-      statusText: text,
-      statusEmoji: emoji,
-    });
+    rawSegs.push({ startMs: cursor, endMs: windowEnd, presence: state, statusText: text, statusEmoji: emoji });
+  }
+
+  // Split raw segments at work boundaries so each sub-segment is fully in/out of work hours
+  const segments: Segment[] = [];
+  for (const raw of rawSegs) {
+    const splits = [workStartMs, workEndMs]
+      .filter((t) => t > raw.startMs && t < raw.endMs)
+      .sort((a, b) => a - b);
+    let cur = raw.startMs;
+    for (const sp of [...splits, raw.endMs]) {
+      if (sp <= cur) continue;
+      const mid = (cur + sp) / 2;
+      segments.push({
+        startPct: ((cur - windowStart) / DISPLAY_DURATION_MS) * 100,
+        widthPct: ((sp - cur) / DISPLAY_DURATION_MS) * 100,
+        startMs: cur,
+        endMs: sp,
+        presence: raw.presence,
+        statusText: raw.statusText,
+        statusEmoji: raw.statusEmoji,
+        isOffHours: mid < workStartMs || mid >= workEndMs,
+      });
+      cur = sp;
+    }
   }
 
   return segments;
@@ -180,14 +202,12 @@ function fmtDuration(seconds: number): string {
 
 function computeDayDuration(
   segments: Segment[],
-  workStart: number,
-  workEnd: number,
 ): { activeSec: number; awaySec: number } {
-  const workDurationSec = (workEnd - workStart) * 3600;
   let activeSec = 0;
   let awaySec = 0;
   for (const seg of segments) {
-    const sec = (seg.widthPct / 100) * workDurationSec;
+    if (seg.isOffHours) continue;
+    const sec = (seg.endMs - seg.startMs) / 1000;
     if (seg.presence === "active") activeSec += sec;
     else if (seg.presence === "away") awaySec += sec;
   }
@@ -209,9 +229,9 @@ function DayLabel({ date }: { date: Date }) {
   );
 }
 
-function segmentColor(presence: "active" | "away" | "unknown"): string {
-  if (presence === "active") return "bg-green-400";
-  if (presence === "away") return "bg-gray-200";
+function segmentColor(presence: "active" | "away" | "unknown", isOffHours = false): string {
+  if (presence === "active") return isOffHours ? "bg-green-200" : "bg-green-400";
+  if (presence === "away") return isOffHours ? "bg-gray-50" : "bg-gray-200";
   return "bg-gray-100";
 }
 
@@ -250,21 +270,21 @@ function getWeekDays(weekOffset: number): Date[] {
 function TimelineBar({
   segments,
   hours,
-  workStart,
-  workEnd,
+  workStartPct,
+  workEndPct,
   timezone,
 }: {
   segments: Segment[];
   hours: number[];
-  workStart: number;
-  workEnd: number;
+  workStartPct: number;
+  workEndPct: number;
   timezone?: string | null;
 }) {
   const [hoverPct, setHoverPct] = useState<number | null>(null);
   const [clickTooltip, setClickTooltip] = useState<{ pct: number; text: string } | null>(null);
 
   function pctToTime(pct: number): string {
-    const absMin = Math.round(workStart * 60) + Math.round((pct / 100) * (workEnd - workStart) * 60);
+    const absMin = Math.round(DISPLAY_START * 60) + Math.round((pct / 100) * (DISPLAY_END - DISPLAY_START) * 60);
     const h = Math.floor(absMin / 60);
     const m = absMin % 60;
     const time = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
@@ -294,17 +314,32 @@ function TimelineBar({
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHoverPct(null)}
       >
-        {hours.filter((h) => h > workStart && h < workEnd).map((h) => (
+        {/* Hour dividers */}
+        {hours.map((h) => (
           <div
             key={h}
             className="absolute top-0 bottom-0 w-px bg-white/60"
-            style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
+            style={{ left: `${((h - DISPLAY_START) / (DISPLAY_END - DISPLAY_START)) * 100}%` }}
           />
         ))}
+        {/* Work start boundary line */}
+        {workStartPct > 0 && workStartPct < 100 && (
+          <div
+            className="absolute top-0 bottom-0 w-px bg-blue-300/70 z-10"
+            style={{ left: `${workStartPct}%` }}
+          />
+        )}
+        {/* Work end boundary line */}
+        {workEndPct > 0 && workEndPct < 100 && (
+          <div
+            className="absolute top-0 bottom-0 w-px bg-blue-300/70 z-10"
+            style={{ left: `${workEndPct}%` }}
+          />
+        )}
         {segments.map((seg, si) => (
           <div
             key={si}
-            className={`absolute top-0 bottom-0 ${segmentColor(seg.presence)} ${seg.statusText || seg.statusEmoji ? "cursor-pointer" : ""}`}
+            className={`absolute top-0 bottom-0 ${segmentColor(seg.presence, seg.isOffHours)} ${seg.statusText || seg.statusEmoji ? "cursor-pointer" : ""}`}
             style={{ left: `${seg.startPct}%`, width: `${seg.widthPct}%` }}
             title={buildTooltip(seg)}
             onClick={(e) => handleSegmentClick(e, seg)}
@@ -312,7 +347,7 @@ function TimelineBar({
         ))}
         {hoverPct !== null && (
           <div
-            className="absolute top-0 bottom-0 w-px bg-gray-600 pointer-events-none z-10"
+            className="absolute top-0 bottom-0 w-px bg-gray-600 pointer-events-none z-20"
             style={{ left: `${hoverPct}%` }}
           />
         )}
@@ -364,39 +399,47 @@ function Timeline({
   const { from, to } = getWeekRange(weekOffset);
   const isCurrentWeek = weekOffset === 0;
 
+  // Hour markers spanning the full display window (every 2h to keep it readable)
   const hours: number[] = [];
-  for (let h = Math.ceil(workStart); h <= Math.floor(workEnd); h += 1) hours.push(h);
+  for (let h = Math.ceil(DISPLAY_START); h <= Math.floor(DISPLAY_END); h += 2) hours.push(h);
+
+  // Work boundary lines are at the same relative position for every day
+  const workStartPct = Math.max(0, Math.min(100, ((workStart - DISPLAY_START) / (DISPLAY_END - DISPLAY_START)) * 100));
+  const workEndPct = Math.max(0, Math.min(100, ((workEnd - DISPLAY_START) / (DISPLAY_END - DISPLAY_START)) * 100));
 
   const weekLabel = `${from.toLocaleDateString([], { month: "short", day: "numeric" })} – ${to.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
 
   return (
     <div className="rounded-xl border bg-white p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      {/* Header — two rows on mobile */}
+      <div className="space-y-1">
+        <div className="flex items-center justify-between gap-2">
           <h3 className="font-medium text-gray-700">Daily Timeline</h3>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={onPrev}
+              disabled={loading}
+              className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              ← Prev
+            </button>
+            <button
+              onClick={onNext}
+              disabled={isCurrentWeek || loading}
+              className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              Next →
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-xs text-gray-400">{weekLabel}</span>
           {timezone && (
             <span className="text-xs text-gray-400 bg-gray-50 border rounded px-1.5 py-0.5">
               {getShortTzAbbr(timezone)}
             </span>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-400">{fmtDecimalHour(workStart)} – {fmtDecimalHour(workEnd)}</span>
-          <button
-            onClick={onPrev}
-            disabled={loading}
-            className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            ← Prev
-          </button>
-          <button
-            onClick={onNext}
-            disabled={isCurrentWeek || loading}
-            className="rounded px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            Next →
-          </button>
+          <span className="text-xs text-gray-300 ml-auto">{fmtDecimalHour(DISPLAY_START)}–{fmtDecimalHour(DISPLAY_END)}</span>
         </div>
       </div>
 
@@ -413,13 +456,13 @@ function Timeline({
       <div className="space-y-2 overflow-x-auto">
         {days.map((date, di) => {
           const segments = buildDaySegments(history, statusHistory, date, workStart, workEnd, timezone);
-          const { activeSec, awaySec } = computeDayDuration(segments, workStart, workEnd);
+          const { activeSec, awaySec } = computeDayDuration(segments);
           const total = activeSec + awaySec;
           const activePct = total > 0 ? `${((activeSec / total) * 100).toFixed(0)}%` : "—";
           return (
             <div key={di} className="flex items-center gap-3">
               <DayLabel date={date} />
-              <TimelineBar segments={segments} hours={hours} workStart={workStart} workEnd={workEnd} timezone={timezone} />
+              <TimelineBar segments={segments} hours={hours} workStartPct={workStartPct} workEndPct={workEndPct} timezone={timezone} />
               <div className="flex gap-2 flex-shrink-0 w-[120px] sm:w-[180px]">
                 <span className="text-xs text-green-600 w-14 text-right font-mono">
                   {activeSec > 0 ? fmtDuration(activeSec) : "—"}
@@ -442,7 +485,7 @@ function Timeline({
           <span
             key={h}
             className="absolute text-[10px] text-gray-400 -translate-x-1/2"
-            style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
+            style={{ left: `${((h - DISPLAY_START) / (DISPLAY_END - DISPLAY_START)) * 100}%` }}
           >
             {h}
           </span>
@@ -453,6 +496,9 @@ function Timeline({
       <div className="flex items-center gap-4 text-xs text-gray-500">
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-sm bg-green-400" /> Active
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="h-3 w-3 rounded-sm bg-green-200" /> Active (off-hours)
         </span>
         <span className="flex items-center gap-1.5">
           <span className="h-3 w-3 rounded-sm bg-gray-200" /> Away
@@ -516,7 +562,6 @@ function TimezoneEditor({
       >
         {timezone ? `${timezone} · ` : "Set timezone"}
         {timezone && <UserLocalClock timezone={timezone} />}
-        {timezone && <span className="ml-1 text-gray-300">(edit)</span>}
       </button>
     );
   }
@@ -549,12 +594,6 @@ function TimezoneEditor({
       {error && <span className="text-xs text-red-500">{error}</span>}
     </span>
   );
-}
-
-/** Find what status was active at a given ISO timestamp from a sorted-ascending status history. */
-function statusAtTimestamp(statusHistory: StatusHistory[], iso: string): { text: string | null; emoji: string | null } {
-  const ts = new Date(iso).getTime();
-  return statusAtTime(statusHistory, ts);
 }
 
 function UserDetailPage() {
@@ -654,17 +693,20 @@ function UserDetailPage() {
       </div>
 
       {/* User card */}
-      <div className="rounded-xl border bg-white p-4 flex flex-col sm:flex-row items-start gap-4">
-        <div className="flex items-start gap-4 flex-1 min-w-0">
+      <div className="rounded-xl border bg-white p-4">
+        <div className="flex items-start gap-4">
+          {/* Avatar */}
           {user.avatar_url ? (
-            <img src={user.avatar_url} className="h-16 w-16 rounded-full flex-shrink-0" alt="" />
+            <img src={user.avatar_url} className="h-14 w-14 rounded-full flex-shrink-0" alt="" />
           ) : (
-            <div className="h-16 w-16 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-xl font-bold text-gray-400">
+            <div className="h-14 w-14 rounded-full bg-gray-200 flex-shrink-0 flex items-center justify-center text-xl font-bold text-gray-400">
               {(user.real_name ?? user.display_name ?? "?")[0].toUpperCase()}
             </div>
           )}
+
+          {/* Name + info */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-xl font-semibold">{user.real_name ?? user.display_name}</h2>
               <PresenceBadge presence={livePresence} showLabel />
             </div>
@@ -684,29 +726,57 @@ function UserDetailPage() {
               </p>
             )}
           </div>
+
+          {/* Stats — desktop: right side */}
+          <div className="hidden sm:block text-right flex-shrink-0">
+            <p className="text-xs text-gray-400">Availability (week)</p>
+            <p className="text-2xl font-bold text-brand">{availPct}%</p>
+            {(lastHistoryRecord || user.last_active_at) && (
+              <p className="text-xs mt-0.5 flex flex-col items-end gap-0.5">
+                {lastHistoryRecord ? (
+                  lastHistoryRecord.presence === "active" ? (
+                    <span className="text-green-600">Active for {fmtIdleDuration(lastHistoryRecord.recorded_at)}</span>
+                  ) : (
+                    <span className="text-amber-500">Idle for {fmtIdleDuration(lastHistoryRecord.recorded_at)}</span>
+                  )
+                ) : livePresence === "away" ? (
+                  <span className="text-amber-500">Idle {fmtIdleDuration(user.last_active_at!)}</span>
+                ) : null}
+                {user.last_active_at && (
+                  <span className="text-gray-400">
+                    last active{" "}
+                    {new Date(user.last_active_at).toLocaleTimeString(undefined, {
+                      ...(timezone ? { timeZone: timezone } : {}),
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                    {timezone && ` ${getShortTzAbbr(timezone)}`}
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
         </div>
-        <div className="sm:text-right">
-          <p className="text-xs text-gray-400">Availability (week)</p>
-          <p className="text-2xl font-bold text-brand">{availPct}%</p>
+
+        {/* Stats — mobile: below the main row */}
+        <div className="sm:hidden mt-3 pt-3 border-t flex items-center justify-between gap-4">
+          <div>
+            <p className="text-xs text-gray-400">Availability (week)</p>
+            <p className="text-xl font-bold text-brand">{availPct}%</p>
+          </div>
           {(lastHistoryRecord || user.last_active_at) && (
-            <p className="text-xs mt-0.5 flex sm:flex-col sm:items-end items-center gap-1 flex-wrap">
+            <div className="text-right text-xs space-y-0.5">
               {lastHistoryRecord ? (
                 lastHistoryRecord.presence === "active" ? (
-                  <span className="text-green-600">
-                    Active for {fmtIdleDuration(lastHistoryRecord.recorded_at)}
-                  </span>
+                  <p className="text-green-600">Active for {fmtIdleDuration(lastHistoryRecord.recorded_at)}</p>
                 ) : (
-                  <span className="text-amber-500">
-                    Idle for {fmtIdleDuration(lastHistoryRecord.recorded_at)}
-                  </span>
+                  <p className="text-amber-500">Idle for {fmtIdleDuration(lastHistoryRecord.recorded_at)}</p>
                 )
               ) : livePresence === "away" ? (
-                <span className="text-amber-500">
-                  Idle {fmtIdleDuration(user.last_active_at!)}
-                </span>
+                <p className="text-amber-500">Idle {fmtIdleDuration(user.last_active_at!)}</p>
               ) : null}
               {user.last_active_at && (
-                <span className="text-gray-400">
+                <p className="text-gray-400">
                   last active{" "}
                   {new Date(user.last_active_at).toLocaleTimeString(undefined, {
                     ...(timezone ? { timeZone: timezone } : {}),
@@ -714,9 +784,9 @@ function UserDetailPage() {
                     minute: "2-digit",
                   })}
                   {timezone && ` ${getShortTzAbbr(timezone)}`}
-                </span>
+                </p>
               )}
-            </p>
+            </div>
           )}
         </div>
       </div>
@@ -734,11 +804,11 @@ function UserDetailPage() {
         onNext={() => setWeekOffset((w) => Math.min(w + 1, 0))}
       />
 
-      {/* History table */}
+      {/* Presence Activity — merged presence + status events */}
       <div className="rounded-xl border bg-white overflow-hidden">
-        <h3 className="font-medium text-gray-700 px-4 py-3 border-b">Presence Events</h3>
-        {history.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400">No history for this week</p>
+        <h3 className="font-medium text-gray-700 px-4 py-3 border-b">Presence Activity</h3>
+        {history.length === 0 && statusHistory.length === 0 ? (
+          <p className="p-4 text-sm text-gray-400">No activity for this week</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm min-w-[400px]">
@@ -751,46 +821,50 @@ function UserDetailPage() {
                       </span>
                     )}
                   </th>
-                  <th className="px-4 py-2 text-left">Presence</th>
-                  <th className="px-4 py-2 text-left">Status at event</th>
-                  <th className="px-4 py-2 text-left">Source</th>
+                  <th className="px-4 py-2 text-left">Type</th>
+                  <th className="px-4 py-2 text-left">Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {[...history]
+                {[
+                  ...history.map((h) => ({ kind: "presence" as const, recorded_at: h.recorded_at, presence: h.presence, source: h.source, id: h.id })),
+                  ...statusHistory.map((s) => ({ kind: "status" as const, recorded_at: s.recorded_at, status_text: s.status_text, status_emoji: s.status_emoji, id: s.id })),
+                ]
                   .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
-                  .slice(0, 100)
-                  .map((h) => {
-                    const { text, emoji } = statusAtTimestamp(sortedStatusHistory, h.recorded_at);
-                    return (
-                      <tr key={h.id}>
-                        <td className="px-4 py-2 text-gray-500">
-                          {new Date(h.recorded_at).toLocaleString(undefined, {
-                            ...(timezone ? { timeZone: timezone } : {}),
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit",
-                          })}
-                        </td>
-                        <td className="px-4 py-2">
-                          <PresenceBadge presence={h.presence as "active" | "away"} showLabel />
-                        </td>
-                        <td className="px-4 py-2 text-gray-600 text-xs">
-                          {(text || emoji) ? (
-                            <>
-                              {emoji ? <SlackText text={emoji} /> : null}{" "}
-                              {text ? <SlackText text={text} /> : null}
-                            </>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-gray-400 text-xs">{h.source}</td>
-                      </tr>
-                    );
-                  })}
+                  .slice(0, 80)
+                  .map((item) => (
+                    <tr key={`${item.kind}-${item.id}`}>
+                      <td className="px-4 py-2 text-gray-500 text-xs">
+                        {new Date(item.recorded_at).toLocaleString(undefined, {
+                          ...(timezone ? { timeZone: timezone } : {}),
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                        })}
+                      </td>
+                      <td className="px-4 py-2">
+                        {item.kind === "presence" ? (
+                          <PresenceBadge presence={item.presence as "active" | "away"} showLabel />
+                        ) : (
+                          <span className="text-xs text-gray-500">status</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-gray-600 text-xs">
+                        {item.kind === "presence" ? (
+                          <span className="text-gray-400">{item.source}</span>
+                        ) : (item.status_text || item.status_emoji) ? (
+                          <>
+                            {item.status_emoji ? <SlackText text={item.status_emoji} /> : null}{" "}
+                            {item.status_text ? <SlackText text={item.status_text} /> : null}
+                          </>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>

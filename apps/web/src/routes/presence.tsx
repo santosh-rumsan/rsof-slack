@@ -11,10 +11,18 @@ export const Route = createFileRoute("/presence")({
 const ENV_WORK_START = parseInt(import.meta.env.VITE_WORK_START_HOUR ?? "7");
 const ENV_WORK_END = parseInt(import.meta.env.VITE_WORK_END_HOUR ?? "23");
 
+// Fixed display window — timeline bar always shows 8:00 to 23:30
+const DISPLAY_START = 8;
+const DISPLAY_END = 23.5;
+const DISPLAY_DURATION_MS = (DISPLAY_END - DISPLAY_START) * 3600000;
+
 interface Segment {
   startPct: number;
   widthPct: number;
+  startMs: number;
+  endMs: number;
   presence: "active" | "away" | "unknown";
+  isOffHours: boolean;
 }
 
 function localToUtcMs(dateStr: string, hour: number, tz: string): number {
@@ -45,25 +53,26 @@ function buildDaySegments(
   timezone?: string | null,
 ): Segment[] {
   const now = Date.now();
-  const workDurationMs = (workEnd - workStart) * 60 * 60 * 1000;
   const y = date.getFullYear();
   const mo = date.getMonth();
   const d = date.getDate();
   const dateStr = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 
-  const windowStart = timezone
-    ? localToUtcMs(dateStr, workStart, timezone)
-    : new Date(y, mo, d, workStart, 0, 0, 0).getTime();
-  const rawWindowEnd = timezone
-    ? localToUtcMs(dateStr, workEnd, timezone)
-    : new Date(y, mo, d, workEnd, 0, 0, 0).getTime();
+  function toMs(hour: number) {
+    return timezone
+      ? localToUtcMs(dateStr, hour, timezone)
+      : new Date(y, mo, d, Math.floor(hour), Math.round((hour % 1) * 60), 0, 0).getTime();
+  }
+
+  const windowStart = toMs(DISPLAY_START);
+  const rawWindowEnd = toMs(DISPLAY_END);
+  const workStartMs = toMs(workStart);
+  const workEndMs = toMs(workEnd);
 
   if (windowStart > now) return [];
 
   const windowEnd = Math.min(rawWindowEnd, now);
-  const dayMidnight = timezone
-    ? localToUtcMs(dateStr, 0, timezone)
-    : new Date(y, mo, d, 0, 0, 0, 0).getTime();
+  const dayMidnight = toMs(0);
   const nextMidnight = dayMidnight + 86400000;
 
   const dayEvents = history
@@ -80,7 +89,8 @@ function buildDaySegments(
   let state: "active" | "away" | "unknown" =
     prior.length > 0 ? (prior[0].presence as "active" | "away") : "unknown";
 
-  const segments: Segment[] = [];
+  type Raw = { startMs: number; endMs: number; presence: "active" | "away" | "unknown" };
+  const rawSegs: Raw[] = [];
   let cursor = windowStart;
 
   for (const ev of dayEvents) {
@@ -90,24 +100,34 @@ function buildDaySegments(
       continue;
     }
     const segEnd = Math.min(evMs, windowEnd);
-    if (segEnd > cursor) {
-      segments.push({
-        startPct: ((cursor - windowStart) / workDurationMs) * 100,
-        widthPct: ((segEnd - cursor) / workDurationMs) * 100,
-        presence: state,
-      });
-    }
+    if (segEnd > cursor) rawSegs.push({ startMs: cursor, endMs: segEnd, presence: state });
     state = ev.presence as "active" | "away";
     cursor = evMs;
     if (cursor >= windowEnd) break;
   }
 
-  if (cursor < windowEnd) {
-    segments.push({
-      startPct: ((cursor - windowStart) / workDurationMs) * 100,
-      widthPct: ((windowEnd - cursor) / workDurationMs) * 100,
-      presence: state,
-    });
+  if (cursor < windowEnd) rawSegs.push({ startMs: cursor, endMs: windowEnd, presence: state });
+
+  // Split at work boundaries and tag off-hours
+  const segments: Segment[] = [];
+  for (const raw of rawSegs) {
+    const splits = [workStartMs, workEndMs]
+      .filter((t) => t > raw.startMs && t < raw.endMs)
+      .sort((a, b) => a - b);
+    let cur = raw.startMs;
+    for (const sp of [...splits, raw.endMs]) {
+      if (sp <= cur) continue;
+      const mid = (cur + sp) / 2;
+      segments.push({
+        startPct: ((cur - windowStart) / DISPLAY_DURATION_MS) * 100,
+        widthPct: ((sp - cur) / DISPLAY_DURATION_MS) * 100,
+        startMs: cur,
+        endMs: sp,
+        presence: raw.presence,
+        isOffHours: mid < workStartMs || mid >= workEndMs,
+      });
+      cur = sp;
+    }
   }
 
   return segments;
@@ -115,14 +135,12 @@ function buildDaySegments(
 
 function computeDayDuration(
   segments: Segment[],
-  workStart: number,
-  workEnd: number,
 ): { activeSec: number; awaySec: number } {
-  const workDurationSec = (workEnd - workStart) * 3600;
   let activeSec = 0;
   let awaySec = 0;
   for (const seg of segments) {
-    const sec = (seg.widthPct / 100) * workDurationSec;
+    if (seg.isOffHours) continue;
+    const sec = (seg.endMs - seg.startMs) / 1000;
     if (seg.presence === "active") activeSec += sec;
     else if (seg.presence === "away") awaySec += sec;
   }
@@ -147,29 +165,29 @@ function getShortTzAbbr(timezone: string): string {
   }
 }
 
-function segmentColor(presence: "active" | "away" | "unknown") {
-  if (presence === "active") return "bg-green-400";
-  if (presence === "away") return "bg-gray-200";
+function segmentColor(presence: "active" | "away" | "unknown", isOffHours = false) {
+  if (presence === "active") return isOffHours ? "bg-green-200" : "bg-green-400";
+  if (presence === "away") return isOffHours ? "bg-gray-50" : "bg-gray-200";
   return "bg-gray-100";
 }
 
 function UserPresenceBar({
   segments,
-  workStart,
-  workEnd,
+  workStartPct,
+  workEndPct,
   timezone,
   hours,
 }: {
   segments: Segment[];
-  workStart: number;
-  workEnd: number;
+  workStartPct: number;
+  workEndPct: number;
   timezone?: string | null;
   hours: number[];
 }) {
   const [hoverPct, setHoverPct] = useState<number | null>(null);
 
   function pctToTime(pct: number): string {
-    const absMin = Math.round(workStart * 60) + Math.round((pct / 100) * (workEnd - workStart) * 60);
+    const absMin = Math.round(DISPLAY_START * 60) + Math.round((pct / 100) * (DISPLAY_END - DISPLAY_START) * 60);
     const h = Math.floor(absMin / 60);
     const m = absMin % 60;
     const time = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
@@ -187,17 +205,32 @@ function UserPresenceBar({
         }}
         onMouseLeave={() => setHoverPct(null)}
       >
-        {hours.slice(1, -1).map((h) => (
+        {/* Hour dividers */}
+        {hours.map((h) => (
           <div
             key={h}
             className="absolute top-0 bottom-0 w-px bg-white/60"
-            style={{ left: `${((h - workStart) / (workEnd - workStart)) * 100}%` }}
+            style={{ left: `${((h - DISPLAY_START) / (DISPLAY_END - DISPLAY_START)) * 100}%` }}
           />
         ))}
+        {/* Work start boundary */}
+        {workStartPct > 0 && workStartPct < 100 && (
+          <div
+            className="absolute top-0 bottom-0 w-px bg-blue-300/70 z-10"
+            style={{ left: `${workStartPct}%` }}
+          />
+        )}
+        {/* Work end boundary */}
+        {workEndPct > 0 && workEndPct < 100 && (
+          <div
+            className="absolute top-0 bottom-0 w-px bg-blue-300/70 z-10"
+            style={{ left: `${workEndPct}%` }}
+          />
+        )}
         {segments.map((seg, si) => (
           <div
             key={si}
-            className={`absolute top-0 bottom-0 ${segmentColor(seg.presence)}`}
+            className={`absolute top-0 bottom-0 ${segmentColor(seg.presence, seg.isOffHours)}`}
             style={{ left: `${seg.startPct}%`, width: `${seg.widthPct}%` }}
             title={seg.presence}
           />
@@ -250,9 +283,13 @@ function PresenceOverviewPage() {
 
   const hours = useMemo(() => {
     const h: number[] = [];
-    for (let i = workStart; i <= workEnd; i += 2) h.push(i);
+    for (let i = Math.ceil(DISPLAY_START); i <= Math.floor(DISPLAY_END); i += 2) h.push(i);
     return h;
-  }, [workStart, workEnd]);
+  }, []);
+
+  // Work boundary positions (relative to the display window) — same for every row
+  const workStartPct = Math.max(0, Math.min(100, ((workStart - DISPLAY_START) / (DISPLAY_END - DISPLAY_START)) * 100));
+  const workEndPct = Math.max(0, Math.min(100, ((workEnd - DISPLAY_START) / (DISPLAY_END - DISPLAY_START)) * 100));
 
   useEffect(() => {
     load(selectedDate);
@@ -336,14 +373,16 @@ function PresenceOverviewPage() {
           {/* Header row */}
           <div className="flex items-center gap-3 mb-1">
             <div className="w-[192px] flex-shrink-0" />
-            <div className="relative flex-1 ml-0">
-              <div className="flex">
-                {hours.map((h) => (
-                  <span key={h} className="text-[10px] text-gray-400 flex-1">
-                    {h}:00
-                  </span>
-                ))}
-              </div>
+            <div className="relative flex-1 h-4">
+              {hours.map((h) => (
+                <span
+                  key={h}
+                  className="absolute text-[10px] text-gray-400 -translate-x-1/2"
+                  style={{ left: `${((h - DISPLAY_START) / (DISPLAY_END - DISPLAY_START)) * 100}%` }}
+                >
+                  {h}
+                </span>
+              ))}
             </div>
             <div className="flex gap-2 flex-shrink-0 w-[180px]">
               <span className="text-[10px] text-gray-400 w-14 text-right">Active</span>
@@ -358,7 +397,7 @@ function PresenceOverviewPage() {
               const history = historyMap[user.slack_id] ?? [];
               const segments = buildDaySegments(history, selectedDate, workStart, workEnd, user.timezone);
               const livePresence = presenceMap[user.slack_id] ?? user.current_presence;
-              const { activeSec, awaySec } = computeDayDuration(segments, workStart, workEnd);
+              const { activeSec, awaySec } = computeDayDuration(segments);
               const total = activeSec + awaySec;
               const activePct = total > 0 ? `${((activeSec / total) * 100).toFixed(0)}%` : "—";
 
@@ -388,8 +427,8 @@ function PresenceOverviewPage() {
 
                   <UserPresenceBar
                     segments={segments}
-                    workStart={workStart}
-                    workEnd={workEnd}
+                    workStartPct={workStartPct}
+                    workEndPct={workEndPct}
                     timezone={user.timezone}
                     hours={hours}
                   />
@@ -410,10 +449,13 @@ function PresenceOverviewPage() {
             })}
           </div>
 
-          {/* Legend */}
+            {/* Legend */}
           <div className="flex items-center gap-4 text-xs text-gray-500 mt-3 pt-3 border-t">
             <span className="flex items-center gap-1.5">
               <span className="h-3 w-3 rounded-sm bg-green-400" /> Active
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-sm bg-green-200" /> Active (off-hours)
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-3 w-3 rounded-sm bg-gray-200" /> Away
@@ -421,7 +463,7 @@ function PresenceOverviewPage() {
             <span className="flex items-center gap-1.5">
               <span className="h-3 w-3 rounded-sm bg-gray-100 border" /> No data
             </span>
-            <span className="ml-auto text-gray-300">{workStart}:00 – {workEnd}:00</span>
+            <span className="ml-auto text-gray-300">{DISPLAY_START}:00 – {Math.floor(DISPLAY_END)}:{String(Math.round((DISPLAY_END % 1) * 60)).padStart(2, "0")}</span>
           </div>
         </div>
       )}

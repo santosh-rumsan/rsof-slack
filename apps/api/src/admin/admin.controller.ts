@@ -63,6 +63,7 @@ export class AdminController {
       }
       if (key === 'PRESENCE_RECONCILE_INTERVAL') {
         this.presencePolling.restartIfPolling();
+        this.schedulerJobs.restartJob('presence_push');
       }
     }
 

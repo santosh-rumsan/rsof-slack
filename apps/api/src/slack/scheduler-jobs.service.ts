@@ -4,6 +4,7 @@ import { SettingsService } from '../settings/settings.service';
 import { SlackSyncService } from './slack-sync.service';
 import { UserMappingSyncService } from './user-mapping-sync.service';
 import { PresencePollingService } from './presence-polling.service';
+import { PresencePushService } from './presence-push.service';
 
 interface JobMeta {
   description: string;
@@ -26,6 +27,7 @@ export class SchedulerJobsService {
     private slackSync: SlackSyncService,
     private userMappingSync: UserMappingSyncService,
     private presencePolling: PresencePollingService,
+    private presencePush: PresencePushService,
   ) {}
 
   start(): void {
@@ -42,6 +44,13 @@ export class SchedulerJobsService {
       60,
       'Fetches user-to-Slack-ID mappings from the external user management API (USER_MGMT_API_URL) and upserts them into the local user_mappings table.',
       () => this.userMappingSync.syncUserMappings(),
+    );
+    this.addJob(
+      'presence_push',
+      'PRESENCE_RECONCILE_INTERVAL',
+      5,
+      'Pushes a full presence snapshot for all active users to the external user management API (PRESENCE_PUSH_API_URL). Runs independently of RTM connection state; presence changes are also pushed in real time as they occur.',
+      () => this.presencePush.pushSnapshot(),
     );
 
     this.logger.log('Scheduled jobs registered');

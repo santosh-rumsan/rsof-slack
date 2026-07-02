@@ -18,6 +18,37 @@ export function isAuthenticated(): boolean {
   return !!getJwt();
 }
 
+const APP_ID = import.meta.env.VITE_APP_ID as string;
+
+/** Parse roles for the current app from the JWT payload.
+ *  JWT roles array entries look like: "appId|role1,role2"
+ */
+export function parseJwtRoles(): string[] {
+  const jwt = getJwt();
+  if (!jwt) return [];
+  try {
+    const parts = jwt.split(".");
+    if (parts.length < 2) return [];
+    const payload = JSON.parse(atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const roles: string[] = payload.roles ?? [];
+    for (const entry of roles) {
+      const pipeIdx = entry.indexOf("|");
+      if (pipeIdx === -1) continue;
+      if (entry.slice(0, pipeIdx) === APP_ID) {
+        const rolesPart = entry.slice(pipeIdx + 1);
+        return rolesPart ? rolesPart.split(",").map((r) => r.trim()) : [];
+      }
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+export function hasRole(role: string): boolean {
+  return parseJwtRoles().includes(role);
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`/api/v1${path}`, {
     ...options,
@@ -154,8 +185,9 @@ export interface AppSetting {
 export const SETTING_META: Record<string, { label: string; description: string; type: 'text' | 'number' | 'password' | 'time' | 'timezone' | 'textarea'; step?: number }> = {
   USER_MGMT_API_URL:           { label: 'User Mgmt API URL',         description: 'External user management API endpoint',                type: 'text' },
   USER_MGMT_API_KEY:           { label: 'User Mgmt API Key',         description: 'Bearer token for the user management API',             type: 'password' },
+  PRESENCE_PUSH_API_URL:       { label: 'Presence Push API URL',     description: 'External endpoint that receives presence updates (POST /presence)', type: 'text' },
   USER_SYNC_INTERVAL:          { label: 'User Sync Interval (min)',  description: 'How often to sync Slack users (minutes)',              type: 'number' },
-  PRESENCE_RECONCILE_INTERVAL: { label: 'Presence Reconcile (min)', description: 'Poll interval when RTM is disconnected (minutes)',     type: 'number' },
+  PRESENCE_RECONCILE_INTERVAL: { label: 'Presence Reconcile (min)', description: 'Poll interval when RTM is disconnected, and interval for periodic presence push (minutes)', type: 'number' },
   USER_MAPPING_SYNC_INTERVAL:  { label: 'User Mapping Sync (min)',  description: 'How often to sync user mappings (minutes)',            type: 'number' },
   API_KEY:                     { label: 'Admin API Key',             description: 'Secret key for admin API access',                     type: 'password' },
   TIMEZONE:                    { label: 'Timezone',                  description: 'Timezone for report calculations',                    type: 'timezone' },

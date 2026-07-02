@@ -8,6 +8,7 @@ import { RTMClient } from '@slack/rtm-api';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { PresencePollingService } from './presence-polling.service';
+import { PresencePushService } from './presence-push.service';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -36,6 +37,7 @@ export class RtmService implements OnApplicationShutdown {
     private prisma: PrismaService,
     private events: EventsService,
     private presencePolling: PresencePollingService,
+    private presencePush: PresencePushService,
   ) {}
 
   get isConnected(): boolean {
@@ -183,6 +185,8 @@ export class RtmService implements OnApplicationShutdown {
       avatar_url: user.avatarUrl,
       ts: new Date().toISOString(),
     });
+
+    this.presencePush.pushOne(user.email, presence);
   }
 
   async upsertStatusChange(

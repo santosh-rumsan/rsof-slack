@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
-import { admin, type JobStatus, type AppSetting, SETTING_META } from "@/lib/api";
+import { admin, type JobStatus, type AppSetting, SETTING_META, hasRole } from "@/lib/api";
 
 const CANONICAL_TIMEZONES = [
   "America/New_York",
@@ -17,6 +17,7 @@ const JOB_LABELS: Record<string, string> = {
   user_sync: "Slack User Sync",
   presence_reconcile: "Presence Reconciliation",
   user_mapping_sync: "User Mapping Sync",
+  presence_push: "Presence Push (User Mgmt)",
 };
 
 function decimalToTime(val: string): string {
@@ -52,6 +53,17 @@ function timeUntil(iso: string | null): string {
 }
 
 function SettingsPage() {
+  if (!hasRole("app_admin")) {
+    return (
+      <div className="p-6 text-sm text-gray-400">
+        You don't have permission to access settings.
+      </div>
+    );
+  }
+  return <SettingsContent />;
+}
+
+function SettingsContent() {
   const [jobs, setJobs] = useState<JobStatus[]>([]);
   const [jobsLoading, setJobsLoading] = useState(true);
 

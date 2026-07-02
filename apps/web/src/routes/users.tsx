@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { admin, type SlackUser } from "@/lib/api";
 import { PresenceBadge } from "@/components/presence-badge";
+import { SlackText } from "@/lib/slack-emoji";
 
 export const Route = createFileRoute("/users")({
   component: UsersPage,
@@ -95,7 +96,8 @@ function UsersPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-gray-600 max-w-xs truncate hidden sm:table-cell">
-                      {u.current_status_emoji} {u.current_status_text ?? "—"}
+                      {u.current_status_emoji ? <SlackText text={u.current_status_emoji} /> : null}{" "}
+                      {u.current_status_text ? <SlackText text={u.current_status_text} /> : "—"}
                     </td>
                     <td className="px-4 py-3">
                       <PresenceBadge presence={u.current_presence} />

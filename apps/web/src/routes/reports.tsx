@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { admin, settings, type PresenceSummaryRow, type ActiveHoursRow, type StatusTrendRow, type AppSetting } from "@/lib/api";
+import { admin, settings, type ActiveHoursRow, type StatusTrendRow, type AppSetting } from "@/lib/api";
 import {
   BarChart,
   Bar,
@@ -16,7 +16,7 @@ export const Route = createFileRoute("/reports")({
   component: ReportsPage,
 });
 
-type Tab = "availability" | "active-hours" | "status-trends";
+type Tab = "active-hours" | "status-trends";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -24,10 +24,26 @@ function getSettingValue(s: AppSetting[], key: string, defaultValue: string): st
   return s.find((x) => x.key === key)?.value ?? defaultValue;
 }
 
+function getCurrentWeekRange(): { from: string; to: string } {
+  const today = new Date();
+  const dow = today.getDay();
+  const daysToMonday = dow === 0 ? 6 : dow - 1;
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - daysToMonday);
+  monday.setHours(0, 0, 0, 0);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  return {
+    from: monday.toISOString().split("T")[0],
+    to: sunday.toISOString().split("T")[0],
+  };
+}
+
 function ReportsPage() {
-  const [tab, setTab] = useState<Tab>("availability");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [tab, setTab] = useState<Tab>("active-hours");
+  const defaultRange = getCurrentWeekRange();
+  const [from, setFrom] = useState(defaultRange.from);
+  const [to, setTo] = useState(defaultRange.to);
   const [publicSettings, setPublicSettings] = useState<AppSetting[]>([]);
 
   useEffect(() => {
@@ -60,7 +76,7 @@ function ReportsPage() {
 
       {/* Tabs */}
       <div className="flex gap-1 border-b overflow-x-auto">
-        {(["availability", "active-hours", "status-trends"] as Tab[]).map((t) => (
+        {(["active-hours", "status-trends"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -68,63 +84,15 @@ function ReportsPage() {
               tab === t ? "border-brand text-brand" : "border-transparent text-gray-500 hover:text-gray-700"
             }`}
           >
-            {t === "availability" ? "Availability" : t === "active-hours" ? "Active Hours" : "Status Trends"}
+            {t === "active-hours" ? "Active Hours" : "Status Trends"}
           </button>
         ))}
       </div>
 
       <div>
-        {tab === "availability" && <AvailabilityTab from={from} to={to} />}
         {tab === "active-hours" && <ActiveHoursTab from={from} to={to} />}
         {tab === "status-trends" && <StatusTrendsTab from={from} to={to} />}
       </div>
-    </div>
-  );
-}
-
-function AvailabilityTab({ from, to }: { from: string; to: string }) {
-  const [data, setData] = useState<PresenceSummaryRow[]>([]);
-  useEffect(() => {
-    admin.presenceSummary(from || undefined, to || undefined).then(setData);
-  }, [from, to]);
-
-  const chartData = data.slice(0, 30).map((r) => ({
-    name: r.display_name ?? r.real_name ?? r.slack_id,
-    pct: r.availability_pct,
-  }));
-
-  return (
-    <div className="space-y-4 overflow-x-auto">
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={chartData} layout="vertical" margin={{ left: 80 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-          <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 11 }} />
-          <Tooltip formatter={(v: number) => `${v}%`} />
-          <Bar dataKey="pct" fill="#4A154B" radius={[0, 4, 4, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-
-      <table className="w-full text-sm border rounded-xl overflow-hidden min-w-[400px]">
-        <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-          <tr>
-            <th className="px-4 py-2 text-left">User</th>
-            <th className="px-4 py-2 text-right">Active</th>
-            <th className="px-4 py-2 text-right">Away</th>
-            <th className="px-4 py-2 text-right">Availability</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y bg-white">
-          {data.map((r) => (
-            <tr key={r.slack_id}>
-              <td className="px-4 py-2">{r.display_name ?? r.real_name ?? r.slack_id}</td>
-              <td className="px-4 py-2 text-right text-gray-500">{fmtDuration(r.active_seconds)}</td>
-              <td className="px-4 py-2 text-right text-gray-500">{fmtDuration(r.away_seconds)}</td>
-              <td className="px-4 py-2 text-right font-medium">{r.availability_pct}%</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -222,10 +190,4 @@ function StatusTrendsTab({ from, to }: { from: string; to: string }) {
       </table>
     </div>
   );
-}
-
-function fmtDuration(seconds: number): string {
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  return `${(seconds / 3600).toFixed(1)}h`;
 }

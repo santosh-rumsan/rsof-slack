@@ -5,6 +5,7 @@ import { PresenceProvider } from "@/lib/presence-context";
 import { PresenceToaster } from "@/components/presence-toast";
 import { LayoutDashboard, Users, BarChart2, LogOut, Activity, BookOpen, Radio, Settings, Menu, X } from "lucide-react";
 import React, { useState } from "react";
+import { hasRole } from "@/lib/api";
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
 
@@ -69,7 +70,9 @@ function Layout() {
             <NavLink to="/reports" icon={<BarChart2 size={16} />} label="Reports" onClick={closeDrawer} />
             <NavLink to="/activity" icon={<Activity size={16} />} label="Activity" onClick={closeDrawer} />
             <NavLink to="/docs" icon={<BookOpen size={16} />} label="Docs" onClick={closeDrawer} />
-            <NavLink to="/settings" icon={<Settings size={16} />} label="Settings" onClick={closeDrawer} />
+            {hasRole("app_admin") && (
+              <NavLink to="/settings" icon={<Settings size={16} />} label="Settings" onClick={closeDrawer} />
+            )}
           </nav>
           <div className="border-t p-3">
             <button

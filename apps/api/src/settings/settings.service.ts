@@ -9,6 +9,7 @@ const SENSITIVE_KEYS = new Set(['API_KEY', 'USER_MGMT_API_KEY', 'SLACK_BOT_TOKEN
 const ENV_KEYS: { key: string; envKey: string; defaultValue: string }[] = [
   { key: 'USER_MGMT_API_URL',          envKey: 'USER_MGMT_API_URL',          defaultValue: 'https://rsoffice-users-api.rumsan.xyz/users/external/slack' },
   { key: 'USER_MGMT_API_KEY',          envKey: 'USER_MGMT_API_KEY',          defaultValue: '0x333a22cb63ab89b97221460862a9a980910' },
+  { key: 'PRESENCE_PUSH_API_URL',      envKey: 'PRESENCE_PUSH_API_URL',      defaultValue: 'https://rsoffice-users-api.rumsan.xyz/presence' },
   { key: 'USER_SYNC_INTERVAL',         envKey: 'USER_SYNC_INTERVAL',         defaultValue: '30' },
   { key: 'PRESENCE_RECONCILE_INTERVAL',envKey: 'PRESENCE_RECONCILE_INTERVAL',defaultValue: '5' },
   { key: 'USER_MAPPING_SYNC_INTERVAL', envKey: 'USER_MAPPING_SYNC_INTERVAL', defaultValue: '60' },
